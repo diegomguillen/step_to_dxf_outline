@@ -1,0 +1,3897 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>STEP to DXF Outline Converter | Altium Top Overlay</title>
+  
+  <!-- Google Fonts: Inter & JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+  <!-- CAD & 3D External Libraries -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/clipper-lib@6.4.2/clipper.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/occt-import-js@0.0.22/dist/occt-import-js.js"></script>
+
+  <style>
+    :root {
+      --bg-main: #0a0e17;
+      --bg-panel: #111827;
+      --bg-panel-elevated: #1a2234;
+      --bg-input: #0e1522;
+      --border-color: #243046;
+      --border-color-hover: #3b82f6;
+      --text-primary: #f1f5f9;
+      --text-secondary: #94a3b8;
+      --text-muted: #64748b;
+      --accent-blue: #38bdf8;
+      --accent-blue-hover: #0ea5e9;
+      --accent-gold: #facc15;
+      --accent-gold-glow: rgba(250, 204, 21, 0.25);
+      --accent-green: #10b981;
+      --accent-rose: #f43f5e;
+      --pcb-color: #0b1f15;
+      --pcb-silk: #fef08a;
+      --radius-sm: 6px;
+      --radius-md: 10px;
+      --radius-lg: 14px;
+      --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+    }
+
+    body {
+      font-family: var(--font-sans);
+      background-color: var(--bg-main);
+      color: var(--text-primary);
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* Scrollbars */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: var(--bg-main);
+    }
+    ::-webkit-scrollbar-thumb {
+      background: var(--border-color);
+      border-radius: 3px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: var(--text-muted);
+    }
+
+    /* HEADER */
+    header {
+      height: 54px;
+      background: var(--bg-panel);
+      border-bottom: 1px solid var(--border-color);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 1.25rem;
+      z-index: 20;
+    }
+
+    .brand-title {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .brand-icon {
+      width: 32px;
+      height: 32px;
+      background: linear-gradient(135deg, #0284c7, #0ea5e9);
+      border-radius: var(--radius-sm);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 0 12px rgba(14, 165, 233, 0.4);
+    }
+
+    .brand-icon svg {
+      width: 18px;
+      height: 18px;
+      fill: none;
+      stroke: white;
+      stroke-width: 2;
+    }
+
+    .brand-text h1 {
+      font-size: 0.95rem;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+      color: #fff;
+    }
+
+    .brand-text span {
+      font-size: 0.72rem;
+      color: var(--accent-gold);
+      font-family: var(--font-mono);
+      font-weight: 500;
+    }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      padding: 0.25rem 0.6rem;
+      border-radius: 20px;
+      font-size: 0.72rem;
+      font-weight: 600;
+      background: rgba(16, 185, 129, 0.12);
+      color: var(--accent-green);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+    }
+
+    .badge.loading {
+      background: rgba(250, 204, 21, 0.12);
+      color: var(--accent-gold);
+      border-color: rgba(250, 204, 21, 0.3);
+    }
+
+    .badge-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: currentColor;
+    }
+
+    /* MAIN WORKSPACE LAYOUT */
+    .workspace {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 350px 1fr 1fr;
+      position: relative;
+      overflow: hidden;
+    }
+
+    /* LEFT SIDEBAR CONTROLS */
+    aside.sidebar {
+      background: var(--bg-panel);
+      border-right: 1px solid var(--border-color);
+      display: flex;
+      flex-direction: column;
+      overflow-y: auto;
+      z-index: 10;
+    }
+
+    .sidebar-section {
+      padding: 1rem 1.1rem;
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    .section-title {
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-secondary);
+      margin-bottom: 0.8rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .section-title svg {
+      width: 14px;
+      height: 14px;
+      stroke: var(--accent-blue);
+    }
+
+    /* Drag and Drop Zone */
+    .drop-zone {
+      border: 2px dashed var(--border-color);
+      border-radius: var(--radius-md);
+      padding: 1.1rem 0.8rem;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      background: rgba(14, 21, 34, 0.6);
+    }
+
+    .drop-zone:hover, .drop-zone.dragover {
+      border-color: var(--accent-blue);
+      background: rgba(56, 189, 248, 0.06);
+      transform: translateY(-1px);
+    }
+
+    .drop-zone svg {
+      width: 28px;
+      height: 28px;
+      stroke: var(--accent-blue);
+      margin-bottom: 0.5rem;
+    }
+
+    .drop-zone p {
+      font-size: 0.8rem;
+      color: var(--text-primary);
+      font-weight: 500;
+    }
+
+    .drop-zone span {
+      font-size: 0.7rem;
+      color: var(--text-muted);
+      display: block;
+      margin-top: 0.2rem;
+    }
+
+    /* Quick Load Example button */
+    .btn-sample {
+      margin-top: 0.6rem;
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.4rem;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid var(--border-color);
+      color: var(--text-secondary);
+      font-size: 0.74rem;
+      padding: 0.45rem 0.6rem;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .btn-sample:hover {
+      background: rgba(56, 189, 248, 0.1);
+      border-color: var(--accent-blue);
+      color: #fff;
+    }
+
+    /* Model Stats Table */
+    .stats-table {
+      width: 100%;
+      font-size: 0.75rem;
+      font-family: var(--font-mono);
+      margin-top: 0.6rem;
+      border-collapse: collapse;
+    }
+
+    .stats-table td {
+      padding: 0.25rem 0;
+      color: var(--text-muted);
+    }
+
+    .stats-table td.val {
+      text-align: right;
+      color: var(--text-primary);
+      font-weight: 500;
+    }
+
+    /* Button Grids */
+    .btn-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0.4rem;
+      margin-bottom: 0.6rem;
+    }
+
+    .btn-grid-4 {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 0.4rem;
+      margin-bottom: 0.6rem;
+    }
+
+    .btn {
+      background: var(--bg-panel-elevated);
+      color: var(--text-primary);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-sm);
+      font-size: 0.75rem;
+      font-weight: 500;
+      padding: 0.5rem 0.4rem;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.35rem;
+      transition: all 0.15s ease;
+    }
+
+    .btn:hover {
+      background: #222d42;
+      border-color: var(--border-color-hover);
+      color: #fff;
+    }
+
+    .btn:active {
+      transform: scale(0.97);
+    }
+
+    .btn.active {
+      background: rgba(56, 189, 248, 0.18);
+      border-color: var(--accent-blue);
+      color: var(--accent-blue);
+    }
+
+    .btn-highlight {
+      background: linear-gradient(135deg, rgba(14, 165, 233, 0.2), rgba(56, 189, 248, 0.1));
+      border-color: rgba(56, 189, 248, 0.4);
+      color: var(--accent-blue);
+    }
+
+    .btn-highlight:hover {
+      background: linear-gradient(135deg, rgba(14, 165, 233, 0.3), rgba(56, 189, 248, 0.2));
+      border-color: var(--accent-blue);
+      color: #fff;
+    }
+
+    .btn-action-tool {
+      width: 100%;
+      margin-bottom: 0.5rem;
+      padding: 0.6rem;
+      font-size: 0.78rem;
+    }
+
+    /* Slider / Input Rows */
+    .ctrl-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 0.55rem;
+      font-size: 0.76rem;
+    }
+
+    .ctrl-row label {
+      color: var(--text-secondary);
+    }
+
+    .ctrl-row .val-box {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+    }
+
+    .slider-input {
+      flex: 1;
+      accent-color: var(--accent-blue);
+      cursor: pointer;
+      height: 4px;
+      margin: 0 0.5rem;
+    }
+
+    .number-display {
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      background: var(--bg-input);
+      border: 1px solid var(--border-color);
+      padding: 0.15rem 0.35rem;
+      border-radius: 4px;
+      width: 48px;
+      text-align: right;
+      color: var(--text-primary);
+    }
+
+    /* Radio / Option Cards */
+    .option-group {
+      display: flex;
+      flex-direction: column;
+      gap: 0.4rem;
+      margin-bottom: 0.8rem;
+    }
+
+    .option-card {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.6rem;
+      padding: 0.55rem 0.7rem;
+      border-radius: var(--radius-sm);
+      background: var(--bg-input);
+      border: 1px solid var(--border-color);
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .option-card:hover {
+      border-color: rgba(56, 189, 248, 0.5);
+    }
+
+    .option-card.selected {
+      background: rgba(56, 189, 248, 0.08);
+      border-color: var(--accent-blue);
+    }
+
+    .option-card input[type="radio"] {
+      margin-top: 0.15rem;
+      accent-color: var(--accent-blue);
+    }
+
+    .option-card-content h4 {
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+
+    .option-card-content p {
+      font-size: 0.68rem;
+      color: var(--text-muted);
+      margin-top: 0.1rem;
+    }
+
+    /* Corner Cards & Radio/Chaflán Pills */
+    .corner-card {
+      background: var(--bg-input);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-sm);
+      padding: 0.4rem 0.5rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.3rem;
+      transition: border-color 0.15s;
+    }
+    .corner-card:hover {
+      border-color: rgba(56, 189, 248, 0.4);
+    }
+    .corner-card-header {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+    .corner-pills {
+      display: flex;
+      width: 100%;
+      gap: 3px;
+      background: rgba(0, 0, 0, 0.35);
+      border-radius: 4px;
+      padding: 2px;
+      border: 1px solid rgba(255, 255, 255, 0.06);
+    }
+    .btn-corner-pill {
+      flex: 1;
+      font-size: 0.64rem;
+      font-weight: 500;
+      padding: 3px 6px;
+      border-radius: 3px;
+      border: none;
+      background: transparent;
+      color: var(--text-muted);
+      cursor: pointer;
+      transition: all 0.15s ease;
+      line-height: 1.2;
+      text-align: center;
+    }
+    .btn-corner-pill:hover {
+      color: var(--text-primary);
+    }
+    .btn-corner-pill.active {
+      background: var(--accent-blue);
+      color: #fff;
+      font-weight: 700;
+      box-shadow: 0 1px 4px rgba(56, 189, 248, 0.35);
+    }
+    .corner-input-row {
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid var(--border-color);
+      border-radius: 4px;
+      padding: 0.2rem 0.4rem;
+    }
+    .corner-input-row:focus-within {
+      border-color: var(--accent-blue);
+    }
+    .corner-input-row input {
+      flex: 1;
+      width: 100%;
+      background: transparent;
+      border: none;
+      color: var(--text-primary);
+      font-family: var(--font-mono);
+      font-size: 0.78rem;
+      outline: none;
+    }
+    .corner-input-row span {
+      font-size: 0.66rem;
+      color: var(--text-muted);
+      font-family: var(--font-mono);
+    }
+
+    /* Download Master Button */
+    .export-footer {
+      padding: 1.1rem;
+      margin-top: auto;
+      background: var(--bg-panel-elevated);
+      border-top: 1px solid var(--border-color);
+    }
+
+    .btn-download-dxf {
+      width: 100%;
+      padding: 0.85rem;
+      font-size: 0.88rem;
+      font-weight: 700;
+      background: linear-gradient(135deg, #0284c7, #0284c7 40%, #0369a1);
+      color: #fff;
+      border: none;
+      border-radius: var(--radius-md);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      box-shadow: 0 4px 15px rgba(2, 132, 199, 0.35);
+      transition: all 0.2s ease;
+    }
+
+    .btn-download-dxf:hover:not(:disabled) {
+      background: linear-gradient(135deg, #0ea5e9, #0284c7);
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(2, 132, 199, 0.5);
+    }
+
+    .btn-download-dxf:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+      box-shadow: none;
+    }
+
+    .btn-download-svg {
+      width: 100%;
+      margin-top: 0.4rem;
+      padding: 0.45rem;
+      font-size: 0.72rem;
+      background: transparent;
+      color: var(--text-muted);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .btn-download-svg:hover:not(:disabled) {
+      color: var(--text-primary);
+      border-color: var(--text-secondary);
+    }
+
+    /* VIEWPORT CONTAINERS */
+    .viewport-column {
+      position: relative;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      border-right: 1px solid var(--border-color);
+      background: #0d121d;
+      overflow: hidden;
+    }
+
+    .viewport-column:last-child {
+      border-right: none;
+    }
+
+    .viewport-header {
+      position: absolute;
+      top: 0.75rem;
+      left: 0.75rem;
+      right: 0.75rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      z-index: 10;
+      pointer-events: none;
+    }
+
+    .viewport-tag {
+      background: rgba(17, 24, 39, 0.85);
+      backdrop-filter: blur(8px);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-sm);
+      padding: 0.3rem 0.65rem;
+      font-size: 0.74rem;
+      font-weight: 600;
+      color: var(--text-secondary);
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      pointer-events: auto;
+    }
+
+    .viewport-tag span.badge-color {
+      width: 8px;
+      height: 8px;
+      border-radius: 2px;
+    }
+
+    .tag-3d span.badge-color { background: var(--accent-blue); }
+    .tag-2d span.badge-color { background: var(--accent-gold); }
+
+    .viewport-tools {
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+      pointer-events: auto;
+    }
+
+    .tool-btn {
+      width: 28px;
+      height: 28px;
+      border-radius: var(--radius-sm);
+      background: rgba(17, 24, 39, 0.85);
+      backdrop-filter: blur(8px);
+      border: 1px solid var(--border-color);
+      color: var(--text-secondary);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .tool-btn:hover {
+      background: #1e293b;
+      border-color: var(--accent-blue);
+      color: #fff;
+    }
+
+    .tool-btn.active {
+      background: rgba(56, 189, 248, 0.2);
+      border-color: var(--accent-blue);
+      color: var(--accent-blue);
+    }
+
+    .canvas-container {
+      flex: 1;
+      width: 100%;
+      height: 100%;
+      position: relative;
+    }
+
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+
+    /* 2D Preview Overlays */
+    .preview-info-card {
+      position: absolute;
+      bottom: 0.85rem;
+      left: 0.85rem;
+      background: rgba(17, 24, 39, 0.88);
+      backdrop-filter: blur(8px);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-sm);
+      padding: 0.5rem 0.75rem;
+      font-size: 0.72rem;
+      font-family: var(--font-mono);
+      z-index: 10;
+      color: var(--text-muted);
+      pointer-events: none;
+    }
+
+    .preview-info-card strong {
+      color: var(--accent-gold);
+    }
+
+    .banner-face-pick {
+      position: absolute;
+      top: 3.5rem;
+      left: 50%;
+      transform: translateX(-50%);
+      background: linear-gradient(135deg, rgba(245, 158, 11, 0.9), rgba(217, 119, 6, 0.9));
+      color: #000;
+      font-weight: 600;
+      font-size: 0.76rem;
+      padding: 0.4rem 1rem;
+      border-radius: 20px;
+      z-index: 15;
+      display: none;
+      align-items: center;
+      gap: 0.4rem;
+      box-shadow: 0 4px 15px rgba(245, 158, 11, 0.4);
+      animation: pulse 1.8s infinite;
+    }
+
+    .banner-edge-delete {
+      position: absolute;
+      top: 3.2rem;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(17, 24, 39, 0.92);
+      backdrop-filter: blur(8px);
+      border: 1px solid var(--border-color);
+      color: var(--text-primary);
+      font-size: 0.73rem;
+      padding: 0.35rem 0.75rem;
+      border-radius: 20px;
+      z-index: 15;
+      display: none;
+      align-items: center;
+      gap: 0.6rem;
+      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.45);
+      pointer-events: auto;
+      white-space: nowrap;
+    }
+
+    .banner-edge-delete span.badge-cut {
+      background: rgba(56, 189, 248, 0.16);
+      color: var(--accent-blue);
+      border-radius: 12px;
+      padding: 0.1rem 0.45rem;
+      font-weight: 600;
+      font-size: 0.7rem;
+    }
+
+    .banner-origin-pick {
+      position: absolute;
+      top: 3.2rem;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(15, 23, 42, 0.95);
+      backdrop-filter: blur(8px);
+      border: 1px solid rgba(16, 185, 129, 0.45);
+      color: var(--text-primary);
+      font-size: 0.73rem;
+      padding: 0.35rem 0.75rem;
+      border-radius: 20px;
+      z-index: 15;
+      display: none;
+      align-items: center;
+      gap: 0.6rem;
+      box-shadow: 0 4px 18px rgba(16, 185, 129, 0.25);
+      pointer-events: auto;
+      white-space: nowrap;
+    }
+
+    .btn-edge-tool {
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid var(--border-color);
+      color: var(--text-primary);
+      padding: 0.15rem 0.45rem;
+      border-radius: 4px;
+      font-size: 0.7rem;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.25rem;
+      transition: all 0.15s;
+    }
+
+    .btn-edge-tool:hover:not(:disabled) {
+      background: rgba(56, 189, 248, 0.2);
+      border-color: var(--accent-blue);
+      color: #fff;
+    }
+
+    .btn-edge-tool:disabled {
+      opacity: 0.35;
+      cursor: not-allowed;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: translateX(-50%) scale(1); }
+      50% { opacity: 0.85; transform: translateX(-50%) scale(0.98); }
+    }
+
+    /* Empty Placeholder View */
+    .empty-placeholder {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      color: var(--text-muted);
+      gap: 0.8rem;
+      pointer-events: none;
+      z-index: 5;
+    }
+
+    .empty-placeholder svg {
+      width: 48px;
+      height: 48px;
+      stroke: var(--border-color);
+    }
+
+    .empty-placeholder p {
+      font-size: 0.82rem;
+      color: var(--text-secondary);
+    }
+
+    /* Modal Altium Guide */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.75);
+      backdrop-filter: blur(4px);
+      z-index: 100;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 1.5rem;
+    }
+
+    .modal-card {
+      background: var(--bg-panel);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-lg);
+      width: 100%;
+      max-width: 620px;
+      max-height: 85vh;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6);
+      overflow: hidden;
+    }
+
+    .modal-header {
+      padding: 1rem 1.25rem;
+      border-bottom: 1px solid var(--border-color);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .modal-header h3 {
+      font-size: 0.95rem;
+      font-weight: 700;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .modal-close {
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      font-size: 1.2rem;
+      line-height: 1;
+      padding: 0.2rem;
+    }
+
+    .modal-close:hover {
+      color: #fff;
+    }
+
+    .modal-body {
+      padding: 1.25rem;
+      overflow-y: auto;
+      font-size: 0.82rem;
+      line-height: 1.6;
+      color: var(--text-secondary);
+    }
+
+    .guide-step {
+      display: flex;
+      gap: 0.8rem;
+      margin-bottom: 1rem;
+      padding-bottom: 1rem;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    }
+
+    .step-num {
+      width: 26px;
+      height: 26px;
+      border-radius: 50%;
+      background: var(--accent-blue);
+      color: #000;
+      font-weight: 700;
+      font-size: 0.78rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .guide-step p strong {
+      color: var(--text-primary);
+    }
+
+    .guide-param-table {
+      width: 100%;
+      margin: 0.6rem 0;
+      border-collapse: collapse;
+      background: var(--bg-input);
+      border-radius: var(--radius-sm);
+      overflow: hidden;
+      font-size: 0.76rem;
+    }
+
+    .guide-param-table th, .guide-param-table td {
+      padding: 0.4rem 0.6rem;
+      text-align: left;
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    .guide-param-table th {
+      color: var(--text-muted);
+      font-weight: 600;
+    }
+
+    .guide-param-table td.highlight {
+      color: var(--accent-gold);
+      font-family: var(--font-mono);
+      font-weight: 600;
+    }
+
+    /* Spinner */
+    .spinner {
+      display: inline-block;
+      width: 14px;
+      height: 14px;
+      border: 2px solid rgba(250, 204, 21, 0.3);
+      border-radius: 50%;
+      border-top-color: var(--accent-gold);
+      animation: spin 0.8s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- HEADER -->
+  <header>
+    <div class="brand-title">
+      <div class="brand-icon">
+        <svg viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
+      </div>
+      <div class="brand-text">
+        <h1>STEP ➔ DXF Outline Converter</h1>
+        <span>ALTIUM FOOTPRINT TOP OVERLAY OPTIMIZER</span>
+      </div>
+    </div>
+
+    <div class="header-actions">
+      <div id="wasmStatusBadge" class="badge loading">
+        <span class="spinner"></span>
+        <span id="wasmStatusText">Iniciando motor CAD...</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- MAIN WORKSPACE -->
+  <div class="workspace">
+    
+    <!-- LEFT SIDEBAR -->
+    <aside class="sidebar">
+      
+      <!-- 1. Archivo STEP -->
+      <div class="sidebar-section">
+        <div class="section-title">
+          <span>1. Archivo STEP / STP</span>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
+        </div>
+
+        <input type="file" id="fileInput" accept=".step,.stp" style="display:none">
+        <div class="drop-zone" id="dropZone">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+          <p id="fileNameLabel">Arrastra o haz clic para cargar</p>
+          <span>Soporta archivos .step y .stp</span>
+        </div>
+
+        <button class="btn-sample" id="btnLoadLocalSample">
+          <span>📦</span> Cargar muestra local (7447773470.stp)
+        </button>
+
+        <table class="stats-table" id="statsTable" style="display:none;">
+          <tr><td>Dimensiones 3D:</td><td class="val" id="statDims">0 × 0 × 0 mm</td></tr>
+          <tr><td>Triángulos malla:</td><td class="val" id="statTris">0</td></tr>
+          <tr><td>Caras B-Rep:</td><td class="val" id="statMeshes">0</td></tr>
+        </table>
+      </div>
+
+      <!-- 2. Orientación 3D para PCB -->
+      <div class="sidebar-section">
+        <div class="section-title">
+          <span>2. Orientación PCB</span>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path></svg>
+        </div>
+
+        <!-- Vistas Predefinidas -->
+        <div style="font-size:0.7rem; color:var(--text-muted); margin-bottom:0.4rem;">VISTAS ESTÁNDAR:</div>
+        <div class="btn-grid">
+          <button class="btn btn-highlight" id="btnViewTop" title="Vista superior perpendicular a la PCB">Top (+Z)</button>
+          <button class="btn" id="btnViewBottom" title="Vista inferior (pines/pads)">Bottom (-Z)</button>
+          <button class="btn" id="btnViewFront">Front (+Y)</button>
+          <button class="btn" id="btnViewBack">Back (-Y)</button>
+          <button class="btn" id="btnViewLeft">Left (-X)</button>
+          <button class="btn" id="btnViewRight">Right (+X)</button>
+        </div>
+
+        <!-- Rotaciones en 90 grados -->
+        <div style="font-size:0.7rem; color:var(--text-muted); margin-bottom:0.4rem; margin-top:0.6rem;">ROTACIÓN EN 90°:</div>
+        <div class="btn-grid">
+          <button class="btn" id="btnRotXPos">X +90°</button>
+          <button class="btn" id="btnRotYPos">Y +90°</button>
+          <button class="btn" id="btnRotZPos">Z +90°</button>
+          <button class="btn" id="btnRotXNeg">X -90°</button>
+          <button class="btn" id="btnRotYNeg">Y -90°</button>
+          <button class="btn" id="btnRotZNeg">Z -90°</button>
+        </div>
+
+        <!-- Herramientas de Asentamiento -->
+        <div style="margin-top:0.6rem;">
+          <button class="btn btn-action-tool" id="btnPickFaceAlign" title="Haz clic en cualquier cara plana del 3D para orientarla paralela al plano PCB">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polygon points="12 8 8 12 12 16 16 12 12 8"></polygon></svg>
+            Alinear cara seleccionada a PCB
+          </button>
+          <button class="btn btn-action-tool" id="btnSnapPcbFloor" title="Coloca el punto más bajo del modelo a Z=0">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M19 12l-7 7-7-7"></path></svg>
+            Asentar base en PCB (Z = 0)
+          </button>
+        </div>
+
+        <!-- Desplazamiento y Posición en PCB (X, Y) -->
+        <div style="font-size:0.7rem; color:var(--text-muted); margin-bottom:0.4rem; margin-top:0.65rem;">POSICIÓN EN PLANO PCB (X, Y):</div>
+        <div style="display:flex; gap:0.45rem; margin-bottom:0.45rem;">
+          <div style="flex:1; background:var(--bg-card); border:1px solid var(--border-color); border-radius:var(--radius-sm); padding:0.35rem 0.5rem; display:flex; align-items:center; justify-content:space-between;">
+            <span style="font-size:0.72rem; color:var(--accent-red); font-weight:700;">X:</span>
+            <input type="number" id="modelPosX" value="0.00" step="0.1" style="width:65px; background:transparent; border:none; color:#fff; font-family:var(--font-mono); font-size:0.75rem; text-align:right;">
+            <span style="font-size:0.68rem; color:var(--text-muted);">mm</span>
+          </div>
+          <div style="flex:1; background:var(--bg-card); border:1px solid var(--border-color); border-radius:var(--radius-sm); padding:0.35rem 0.5rem; display:flex; align-items:center; justify-content:space-between;">
+            <span style="font-size:0.72rem; color:var(--accent-green); font-weight:700;">Y:</span>
+            <input type="number" id="modelPosY" value="0.00" step="0.1" style="width:65px; background:transparent; border:none; color:#fff; font-family:var(--font-mono); font-size:0.75rem; text-align:right;">
+            <span style="font-size:0.68rem; color:var(--text-muted);">mm</span>
+          </div>
+        </div>
+        <div style="display:flex; gap:0.4rem;">
+          <button class="btn btn-edge-tool" id="btnCenterModelXY" style="flex:1; justify-content:center;" title="Centra la caja del modelo exactamente en el punto (0,0)">
+            Centrar en (0,0)
+          </button>
+          <button class="btn btn-edge-tool" id="btnResetModelXY" style="flex:1; justify-content:center;" title="Vuelve a la posición X=0, Y=0 original del CAD">
+            Posición X=0, Y=0
+          </button>
+        </div>
+      </div>
+
+      <!-- 3. Caja Delimitadora y Aristas Características -->
+      <div class="sidebar-section">
+        <div class="section-title">
+          <span>3. Caja Delimitadora y Aristas</span>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
+        </div>
+
+        <p style="font-size:0.72rem; color:var(--text-muted); margin-bottom:0.65rem;">
+          La caja delimitadora se ajusta automáticamente a las aristas 3D. Haz clic sobre aristas en la vista 2D para eliminarlas.
+        </p>
+
+        <!-- Filtro de Aristas 3D -->
+        <div id="edgesControlsPanel">
+          <div class="ctrl-row">
+            <label>Ángulo de Aristas:</label>
+            <div class="val-box" style="flex:1;">
+              <input type="range" class="slider-input" id="edgeThresholdSlider" min="10" max="60" value="28" step="1">
+              <span class="number-display" id="edgeThresholdVal">28°</span>
+            </div>
+          </div>
+
+          <div class="ctrl-row">
+            <label>Tolerancia Simplif.:</label>
+            <div class="val-box" style="flex:1;">
+              <input type="range" class="slider-input" id="toleranceSlider" min="0.005" max="0.1" value="0.02" step="0.005">
+              <span class="number-display" id="toleranceVal">0.02 mm</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Controles para Esquinas de la Caja Delimitadora (Radio / Chaflán) -->
+        <div id="bboxControlsPanel" style="background:rgba(255,255,255,0.03); border:1px solid var(--border-color); border-radius:var(--radius-sm); padding:0.65rem; margin-top:0.5rem; margin-bottom:0.75rem;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.45rem;">
+            <div style="font-size:0.7rem; font-weight:600; color:var(--text-secondary); text-transform:uppercase;">Esquinas Caja Delimitadora:</div>
+            <label style="display:flex; align-items:center; gap:0.3rem; font-size:0.68rem; color:var(--text-muted); cursor:pointer;" title="Al marcarlo, cambiar el tipo o tamaño en una esquina lo aplica a las 4">
+              <input type="checkbox" id="bboxLinkRadii" style="accent-color:var(--accent-blue);">
+              <span>Vincular las 4</span>
+            </label>
+          </div>
+
+          <!-- Cuadrícula 2x2 para las 4 esquinas independientes con selector Radio / Chaflán -->
+          <div style="display:grid; grid-template-columns: 1fr 1fr; gap:0.45rem; margin-bottom:0.6rem;">
+            <!-- Sup-Izq (TL) -->
+            <div class="corner-card">
+              <div class="corner-card-header">
+                <div class="corner-pills">
+                  <button type="button" class="btn-corner-pill active" id="btnTypeTL_radius" data-corner="tl" data-type="radius" title="Redondeo circular">Radio</button>
+                  <button type="button" class="btn-corner-pill" id="btnTypeTL_chamfer" data-corner="tl" data-type="chamfer" title="Corte plano en chaflán">Chaflán</button>
+                </div>
+              </div>
+              <div class="corner-input-row">
+                <input type="number" id="bboxRadiusTL" min="0" max="25" step="0.05" value="0.00">
+                <span>mm</span>
+              </div>
+            </div>
+
+            <!-- Sup-Der (TR) -->
+            <div class="corner-card">
+              <div class="corner-card-header">
+                <div class="corner-pills">
+                  <button type="button" class="btn-corner-pill active" id="btnTypeTR_radius" data-corner="tr" data-type="radius" title="Redondeo circular">Radio</button>
+                  <button type="button" class="btn-corner-pill" id="btnTypeTR_chamfer" data-corner="tr" data-type="chamfer" title="Corte plano en chaflán">Chaflán</button>
+                </div>
+              </div>
+              <div class="corner-input-row">
+                <input type="number" id="bboxRadiusTR" min="0" max="25" step="0.05" value="0.00">
+                <span>mm</span>
+              </div>
+            </div>
+
+            <!-- Inf-Izq / Pin 1 (BL) -->
+            <div class="corner-card">
+              <div class="corner-card-header">
+                <div class="corner-pills">
+                  <button type="button" class="btn-corner-pill active" id="btnTypeBL_radius" data-corner="bl" data-type="radius" title="Redondeo circular">Radio</button>
+                  <button type="button" class="btn-corner-pill" id="btnTypeBL_chamfer" data-corner="bl" data-type="chamfer" title="Chaflán bisel de orientación Pin 1">Chaflán</button>
+                </div>
+              </div>
+              <div class="corner-input-row">
+                <input type="number" id="bboxRadiusBL" min="0" max="25" step="0.05" value="0.00">
+                <span>mm</span>
+              </div>
+            </div>
+
+            <!-- Inf-Der (BR) -->
+            <div class="corner-card">
+              <div class="corner-card-header">
+                <div class="corner-pills">
+                  <button type="button" class="btn-corner-pill active" id="btnTypeBR_radius" data-corner="br" data-type="radius" title="Redondeo circular">Radio</button>
+                  <button type="button" class="btn-corner-pill" id="btnTypeBR_chamfer" data-corner="br" data-type="chamfer" title="Corte plano en chaflán">Chaflán</button>
+                </div>
+              </div>
+              <div class="corner-input-row">
+                <input type="number" id="bboxRadiusBR" min="0" max="25" step="0.05" value="0.00">
+                <span>mm</span>
+              </div>
+            </div>
+          </div>
+
+          <div style="display:flex; gap:0.4rem; margin-bottom:0.5rem;">
+            <button class="btn btn-edge-tool" id="btnAutoDetectRadius" style="flex:1; justify-content:center;" title="Detectar analíticamente el radio de las esquinas del 3D">
+              ⚡ Auto-detectar del 3D
+            </button>
+            <button class="btn btn-edge-tool" id="btnResetCorners" style="justify-content:center; padding:0 0.6rem;" title="Poner todas las esquinas a 90° (0 mm)">
+              90°
+            </button>
+          </div>
+        </div>
+
+        <!-- Origen de Footprint (0,0) -->
+        <div style="font-size:0.7rem; color:var(--text-muted); margin:0.6rem 0 0.35rem 0;">ORIGEN DEL FOOTPRINT (0, 0):</div>
+        <div class="btn-grid" style="grid-template-columns: 1fr 1fr; gap:0.4rem;">
+          <button class="btn active" id="btnOrigin3D" title="Punto (0,0) del modelo 3D en la posición actual">Origen 3D (0,0)</button>
+          <button class="btn" id="btnOriginCenter" title="Centro del Bounding Box">Centro BBox</button>
+          <button class="btn" id="btnOriginBottomLeft" title="Esquina inferior izquierda (Pin 1)">Pin 1 / Inf-Izq</button>
+          <button class="btn" id="btnOriginPick" title="Haz clic en la vista 2D para colocar el (0,0) con imán snap">Clic en 2D</button>
+        </div>
+      </div>
+
+      <!-- 4. Formato DXF Altium -->
+      <div class="sidebar-section">
+        <div class="section-title">
+          <span>4. Formato DXF Altium</span>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+        </div>
+
+        <div style="font-size:0.7rem; color:var(--text-muted); margin-bottom:0.35rem;">CAPAS A EXPORTAR EN DXF:</div>
+        <div style="display:flex; flex-direction:column; gap:0.45rem; background:var(--bg-input); border:1px solid var(--border-color); border-radius:var(--radius-sm); padding:0.55rem 0.65rem; margin-bottom:0.75rem;">
+          <div style="display:flex; align-items:center; justify-content:space-between; font-size:0.73rem;">
+            <span style="color:#fef08a; font-weight:600; display:flex; align-items:center; gap:0.35rem;">
+              <span style="display:inline-block; width:8px; height:8px; background:#facc15; border-radius:50%;"></span>
+              Capa Serigrafía:
+            </span>
+            <input type="text" id="dxfLayerName" value="TOP_OVERLAY" style="width:120px; background:var(--bg-card); border:1px solid var(--border-color); color:var(--text-primary); font-family:var(--font-mono); font-size:0.72rem; padding:0.2rem 0.4rem; border-radius:4px; text-transform:uppercase;">
+          </div>
+          <div style="display:flex; align-items:center; justify-content:space-between; font-size:0.73rem;">
+            <span style="color:#c084fc; font-weight:600; display:flex; align-items:center; gap:0.35rem;">
+              <span style="display:inline-block; width:8px; height:8px; background:#c084fc; border-radius:50%;"></span>
+              Capa Courtyard:
+            </span>
+            <input type="text" id="dxfCourtyardLayerName" value="TOP_COURTYARD" style="width:120px; background:var(--bg-card); border:1px solid var(--border-color); color:var(--text-primary); font-family:var(--font-mono); font-size:0.72rem; padding:0.2rem 0.4rem; border-radius:4px; text-transform:uppercase;">
+          </div>
+          <div style="display:flex; align-items:center; justify-content:space-between; font-size:0.73rem; border-top:1px dashed var(--border-color); padding-top:0.4rem; margin-top:0.2rem;">
+            <span style="color:var(--text-secondary);">Holgura Courtyard:</span>
+            <div style="display:flex; align-items:center; gap:0.3rem;">
+              <input type="number" id="courtyardOffsetInput" min="0.10" max="5.0" step="0.05" value="0.50" style="width:60px; background:var(--bg-card); border:1px solid var(--border-color); color:var(--text-primary); font-family:var(--font-mono); font-size:0.72rem; padding:0.2rem 0.4rem; border-radius:4px; text-align:right;">
+              <span style="color:var(--text-muted); font-size:0.7rem;">mm</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="ctrl-row">
+          <label>Compatibilidad:</label>
+          <span style="font-family:var(--font-mono); color:var(--accent-green); font-size:0.74rem;">AutoCAD R12 ASCII (100% Altium)</span>
+        </div>
+      </div>
+
+      <!-- Footer con botón de descarga -->
+      <div class="export-footer">
+        <button class="btn-download-dxf" id="btnDownloadDXF" disabled>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+          Descargar .DXF para Altium
+        </button>
+        <button class="btn-download-svg" id="btnDownloadSVG" disabled>
+          Exportar Vista Previa como .SVG
+        </button>
+      </div>
+
+    </aside>
+
+    <!-- CENTER VIEWPORT: VISOR 3D THREE.JS -->
+    <div class="viewport-column" id="viewport3DCol">
+      <div class="viewport-header">
+        <div class="viewport-tag tag-3d">
+          <span class="badge-color"></span>
+          <span>Visor 3D Modelo STEP</span>
+        </div>
+        <div class="viewport-tools">
+          <button class="tool-btn active" id="btnToggleBrightLights" title="Alternar Alta Iluminación / Modo Estudio (Mayor visibilidad)">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
+          </button>
+          <button class="tool-btn" id="btnToggleWireframe" title="Alternar Malla Sólida / Wireframe">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline></svg>
+          </button>
+          <button class="tool-btn" id="btnToggleCameraMode" title="Alternar Cámara Perspectiva / Ortográfica">
+            <span style="font-size:0.65rem; font-weight:700; font-family:var(--font-mono);">ORT</span>
+          </button>
+          <button class="tool-btn" id="btnResetCamera3D" title="Restablecer Cámara">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 8 8 12 12 16"></polyline><line x1="16" y1="12" x2="8" y2="12"></line></svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- Banner de alerta modo alineación de caras -->
+      <div class="banner-face-pick" id="facePickBanner">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+        <span>Haz clic en cualquier cara plana del modelo para orientarla a la PCB</span>
+      </div>
+
+      <div class="canvas-container" id="container3D">
+        <div class="empty-placeholder" id="placeholder3D">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline></svg>
+          <p>Carga un archivo .step o .stp para comenzar</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- RIGHT VIEWPORT: PREVISUALIZACIÓN 2D DXF -->
+    <div class="viewport-column" id="viewport2DCol">
+      <div class="viewport-header">
+        <div class="viewport-tag tag-2d">
+          <span class="badge-color"></span>
+          <span>Previsualización 2D (Top Overlay DXF)</span>
+        </div>
+        <div class="viewport-tools">
+          <button class="tool-btn active" id="btnToggleLayerBBox" title="Mostrar/Ocultar Caja Delimitadora (Amarillo)"><span style="font-size:0.64rem; font-weight:700; color:#facc15;">BOX</span></button>
+          <button class="tool-btn active" id="btnToggleLayerEdges" title="Mostrar/Ocultar Aristas 3D (Cian)"><span style="font-size:0.64rem; font-weight:700; color:#38bdf8;">LIN</span></button>
+          <button class="tool-btn active" id="btnToggleLayerCourtyard" title="Mostrar/Ocultar Top Courtyard +0.5mm (Púrpura)"><span style="font-size:0.64rem; font-weight:700; color:#c084fc;">CRT</span></button>
+          <button class="tool-btn" id="btnZoomIn2D" title="Zoom +">+</button>
+          <button class="tool-btn" id="btnZoomOut2D" title="Zoom -">-</button>
+          <button class="tool-btn" id="btnResetView2D" title="Ajustar Contorno">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"></path></svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- Banner de ayuda y herramientas de edición de aristas -->
+      <div class="banner-edge-delete" id="bannerEdgeDelete">
+        <span class="badge-cut">✂️ Modo Aristas</span>
+        <span><strong>Clic Izq:</strong> Borrar | <strong>Clic Der:</strong> Conmutar a Top Overlay</span>
+        <button class="btn-edge-tool" id="btnEdgeUndo" title="Deshacer última eliminación (Ctrl+Z)" disabled>↶ Deshacer</button>
+        <button class="btn-edge-tool" id="btnEdgeRestore" title="Restaurar todas las aristas iniciales" disabled>🔄 Restaurar</button>
+      </div>
+
+      <!-- Banner de modo captura de origen (0,0) con magnetismo -->
+      <div class="banner-origin-pick" id="originPickBanner">
+        <span class="badge-cut" style="background:rgba(16, 185, 129, 0.2); color:#34d399; border:1px solid rgba(16, 185, 129, 0.4);">🧲 Origen (0,0)</span>
+        <span>Anclaje magnético a centros y extremos de la caja delimitadora. Clic para fijar.</span>
+        <button class="btn-edge-tool" id="btnCancelOriginPick" title="Cancelar selección de origen">✕ Cancelar</button>
+      </div>
+
+      <div class="canvas-container" id="container2D">
+        <canvas id="canvas2D"></canvas>
+        <div class="empty-placeholder" id="placeholder2D">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="9" cy="9" r="2"></circle><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"></path></svg>
+          <p>El contorno 2D calculado para Altium aparecerá aquí</p>
+        </div>
+      </div>
+
+      <div class="preview-info-card" id="infoCard2D" style="display:none;">
+        <div>Serigrafía: <strong id="cardDims">0 × 0 mm</strong> | Courtyard: <span id="cardCourtyardDims" style="color:#c084fc; font-weight:600;">0 × 0 mm</span></div>
+        <div>Aristas: <span id="cardLines" style="color:#38bdf8;">0</span> | Serigrafía extra: <span id="cardOverlayLines" style="color:#facc15; font-weight:600;">0</span> | Borradas: <span id="cardDeletedLines" style="color:#f43f5e;">0</span></div>
+        <div>Origen (0,0): <span id="cardOrigin" style="color:var(--accent-blue);">Centro</span></div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- MODAL GUÍA DE IMPORTACIÓN EN ALTIUM DESIGNER -->
+  <div class="modal-overlay" id="altiumModal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent-blue)" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+          Cómo Importar el DXF en Altium Designer
+        </h3>
+        <button class="modal-close" id="btnCloseModal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="guide-step">
+          <div class="step-num">1</div>
+          <div>
+            <p><strong>Abre tu biblioteca de Footprints (.PcbLib) o el archivo PCB (.PcbDoc):</strong></p>
+            <p>En el menú superior ve a: <strong>File &gt; Import &gt; DXF/DWG...</strong> y selecciona el archivo <code>.dxf</code> descargado de esta herramienta.</p>
+          </div>
+        </div>
+
+        <div class="guide-step">
+          <div class="step-num">2</div>
+          <div>
+            <p><strong>Configuración recomendada en el diálogo "Import from AutoCAD":</strong></p>
+            <table class="guide-param-table">
+              <tr><th>Parámetro</th><th>Valor a seleccionar</th></tr>
+              <tr><td>Scale (Escala)</td><td class="highlight">1.0</td></tr>
+              <tr><td>Scale Units (Unidades)</td><td class="highlight">Metric (mm)</td></tr>
+              <tr><td>Default Line Width</td><td class="highlight">0.15 mm (o 0.20 mm)</td></tr>
+              <tr><td>Locate at Origin</td><td class="highlight">Marcar casilla activada</td></tr>
+              <tr><td>Layer Mapping</td><td class="highlight">TOP_OVERLAY ➔ Top Overlay</td></tr>
+            </table>
+          </div>
+        </div>
+
+        <div class="guide-step" style="border-bottom:none; margin-bottom:0;">
+          <div class="step-num">3</div>
+          <div>
+            <p><strong>¡Listo!</strong></p>
+            <p>El contorno se colocará de manera exacta sobre la capa de serigrafía (Top Overlay) con el origen seleccionado centrado en el punto de inserción del componente.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- APPLICATION LOGIC -->
+  <script>
+    // --- ESTADO GLOBAL DE LA APLICACIÓN ---
+    const state = {
+      occt: null,
+      wasmReady: false,
+      fileName: 'componente',
+      modelMeshGroup: null,
+      rawGeometry: null,
+      bRepMeshes: [],
+      // Transformación activa de orientación y posición
+      rotation: { x: 0, y: 0, z: 0 }, // en radianes
+      modelPosition: { x: 0, y: 0, z: 0 }, // en mm en el plano PCB
+      offsetZ: 0,
+      // Contorno 2D extraído
+      contour2D: {
+        polylines: [], // array de arrays de {x, y}
+        lines: [],     // array de {x1, y1, x2, y2}
+        courtyardPoly: null, // polilínea de contorno ampliado +0.50mm
+        bounds: { minX: 0, minY: 0, maxX: 0, maxY: 0, width: 0, height: 0 },
+        originOffset: { x: 0, y: 0 }, // relativo al bbox
+        originType: 'model-3d' // 'model-3d' (origen 3D en la posición dejada), 'center', 'bottom-left', 'custom'
+      },
+      // Ajustes
+      extractMode: 'superimposed', // Único modo: Caja Delimitadora superpuesta a Aristas
+      edgeThresholdDeg: 28,
+      simplificationTolerance: 0.02,
+      layerName: 'TOP_OVERLAY',
+      courtyardLayerName: 'TOP_COURTYARD',
+      courtyardOffset: 0.50,
+      // Estado de herramientas interactivas
+      facePickMode: false,
+      originPickMode: false,
+      currentSnapPoint: null,
+      cameraOrtho: false,
+      wireframe: false,
+      // Edición interactiva de aristas
+      hoveredLineIndex: -1,
+      deletedLinesHistory: [],
+      allExtractedLines: [],
+      // Visualización de capas 2D
+      showBBox: true,
+      showEdges: true,
+      showCourtyard: true,
+      // Parámetros de Caja Delimitadora con selector de tipo por esquina ('radius' | 'chamfer')
+      bboxCorners: {
+        tl: { type: 'radius', val: 0 },
+        tr: { type: 'radius', val: 0 },
+        bl: { type: 'chamfer', val: 0 },
+        br: { type: 'radius', val: 0 }
+      },
+      bboxLinkRadii: false,
+      // Iluminación 3D de alta claridad
+      brightLights: true
+    };
+
+    // --- INICIALIZACIÓN DE OCCT-IMPORT-JS (WASM) ---
+    async function initOCCT() {
+      const badge = document.getElementById('wasmStatusBadge');
+      const text = document.getElementById('wasmStatusText');
+      try {
+        state.occt = await occtimportjs({
+          locateFile: (path) => {
+            if (path.endsWith('.wasm')) {
+              return 'https://cdn.jsdelivr.net/npm/occt-import-js@0.0.22/dist/occt-import-js.wasm';
+            }
+            return path;
+          }
+        });
+        state.wasmReady = true;
+        badge.className = 'badge';
+        badge.innerHTML = '<span class="badge-dot"></span><span>Motor CAD Listo</span>';
+      } catch (err) {
+        console.error('Error cargando WebAssembly occt-import-js:', err);
+        badge.className = 'badge';
+        badge.style.background = 'rgba(244, 63, 94, 0.15)';
+        badge.style.color = '#f43f5e';
+        badge.style.borderColor = 'rgba(244, 63, 94, 0.3)';
+        badge.innerHTML = '<span>Error WASM (Verifique conexión)</span>';
+      }
+    }
+
+    // --- CONFIGURACIÓN DEL VISOR 3D (THREE.JS) ---
+    let scene, cameraPersp, cameraOrtho, activeCamera, renderer, controls;
+    let groundGrid, modelContainer, raycaster, mouseRay;
+    let ambientLight, headlight, dirLightTop, dirLightBack, dirLightBottom, hemiLight;
+
+    function applyLightingPreset() {
+      if (!ambientLight) return;
+      if (state.brightLights) {
+        ambientLight.intensity = 0.95;
+        if (headlight) headlight.intensity = 1.05;
+        if (dirLightTop) dirLightTop.intensity = 0.95;
+        if (dirLightBack) dirLightBack.intensity = 0.65;
+        if (dirLightBottom) dirLightBottom.intensity = 0.50;
+        if (hemiLight) hemiLight.intensity = 0.75;
+        if (renderer) renderer.toneMappingExposure = 1.40;
+      } else {
+        ambientLight.intensity = 0.55;
+        if (headlight) headlight.intensity = 0.65;
+        if (dirLightTop) dirLightTop.intensity = 0.70;
+        if (dirLightBack) dirLightBack.intensity = 0.35;
+        if (dirLightBottom) dirLightBottom.intensity = 0.25;
+        if (hemiLight) hemiLight.intensity = 0.45;
+        if (renderer) renderer.toneMappingExposure = 1.10;
+      }
+    }
+
+    function init3D() {
+      const container = document.getElementById('container3D');
+      const width = container.clientWidth;
+      const height = container.clientHeight;
+
+      scene = new THREE.Scene();
+      // Fondo de estudio CAD técnico azul oscuro de alto contraste
+      scene.background = new THREE.Color(0x131d2e);
+
+      // Cámaras
+      cameraPersp = new THREE.PerspectiveCamera(40, width / height, 0.1, 2000);
+      cameraPersp.position.set(35, 45, 60);
+
+      const aspect = width / height;
+      const frustumSize = 60;
+      cameraOrtho = new THREE.OrthographicCamera(
+        (frustumSize * aspect) / -2,
+        (frustumSize * aspect) / 2,
+        frustumSize / 2,
+        frustumSize / -2,
+        0.1,
+        2000
+      );
+      cameraOrtho.position.set(0, 0, 70);
+      cameraOrtho.lookAt(0, 0, 0);
+
+      activeCamera = cameraPersp;
+
+      // Renderer WebGL optimizado para visualización técnica CAD
+      renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: 'high-performance' });
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      renderer.setSize(width, height);
+      renderer.shadowMap.enabled = true;
+      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+      // Codificación y mapeo tonal para evitar sombras oscuras y quemados
+      renderer.outputEncoding = THREE.sRGBEncoding;
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      renderer.toneMappingExposure = 1.40;
+      container.appendChild(renderer.domElement);
+
+      // Controls
+      controls = new THREE.OrbitControls(activeCamera, renderer.domElement);
+      controls.enableDamping = true;
+      controls.dampingFactor = 0.08;
+
+      // Sistema de iluminación multi-fuente estilo estudio CAD
+      // 1. Luz ambiental uniforme (relleno brillante de hendiduras y cavidades)
+      ambientLight = new THREE.AmbientLight(0xffffff, 0.95);
+      scene.add(ambientLight);
+
+      // 2. Luz de cámara frontal (Headlight): viaja con la cámara para que toda cara observada esté iluminada
+      headlight = new THREE.DirectionalLight(0xffffff, 1.05);
+      headlight.position.copy(activeCamera.position);
+      scene.add(headlight);
+
+      // 3. Luz cenital principal (sombra suave y relieve)
+      dirLightTop = new THREE.DirectionalLight(0xffffff, 0.95);
+      dirLightTop.position.set(60, 90, 80);
+      dirLightTop.castShadow = true;
+      scene.add(dirLightTop);
+
+      // 4. Luz de contra y realce de aristas
+      dirLightBack = new THREE.DirectionalLight(0x93c5fd, 0.65);
+      dirLightBack.position.set(-60, -50, 40);
+      scene.add(dirLightBack);
+
+      // 5. Luz inferior de rebote (ilumina patas, pads y pines en Z=0)
+      dirLightBottom = new THREE.DirectionalLight(0xfef08a, 0.50);
+      dirLightBottom.position.set(0, 0, -50);
+      scene.add(dirLightBottom);
+
+      // 6. Luz hemisférica con cielo claro
+      hemiLight = new THREE.HemisphereLight(0xffffff, 0x334155, 0.75);
+      scene.add(hemiLight);
+
+      // Rejilla de masa / plano PCB (Z = 0)
+      // En Three.js estándar Y es arriba, pero en CAD electrónico Z suele ser vertical perpendicular a la PCB.
+      // Definimos la orientación del mundo Three.js con Y hacia arriba y creamos un helper con plano X-Z o rotamos escena.
+      // Para facilidad y estándar Three.js: Usaremos el plano X-Z como superficie de la PCB (Y=0 es la superficie),
+      // o bien orientamos la cámara con Z vertical. Ajustamos Three.js Object3D.DefaultUp = (0, 0, 1).
+      THREE.Object3D.DefaultUp.set(0, 0, 1);
+      cameraPersp.up.set(0, 0, 1);
+      cameraOrtho.up.set(0, 0, 1);
+
+      // Rejilla PCB en el plano XY (Z=0)
+      const gridHelper = new THREE.GridHelper(100, 100, 0x38bdf8, 0x1e293b);
+      gridHelper.rotation.x = Math.PI / 2; // Rota rejilla al plano X-Y
+      scene.add(gridHelper);
+
+      // Ejes de coordenadas estándar (Rojo = X, Verde = Y, Azul = Z)
+      const axesHelper = new THREE.AxesHelper(15);
+      scene.add(axesHelper);
+
+      // Contenedor para el modelo cargado
+      modelContainer = new THREE.Group();
+      scene.add(modelContainer);
+
+      // Raycaster para selección de caras
+      raycaster = new THREE.Raycaster();
+      mouseRay = new THREE.Vector2();
+
+      renderer.domElement.addEventListener('pointerdown', onCanvas3DPointerDown);
+
+      window.addEventListener('resize', onWindowResize);
+      animate();
+    }
+
+    function onWindowResize() {
+      const container = document.getElementById('container3D');
+      if (!container || !renderer) return;
+      const width = container.clientWidth;
+      const height = container.clientHeight;
+
+      cameraPersp.aspect = width / height;
+      cameraPersp.updateProjectionMatrix();
+
+      const aspect = width / height;
+      const frustumSize = 60;
+      cameraOrtho.left = (frustumSize * aspect) / -2;
+      cameraOrtho.right = (frustumSize * aspect) / 2;
+      cameraOrtho.top = frustumSize / 2;
+      cameraOrtho.bottom = frustumSize / -2;
+      cameraOrtho.updateProjectionMatrix();
+
+      renderer.setSize(width, height);
+      render2D();
+    }
+
+    function animate() {
+      requestAnimationFrame(animate);
+      controls.update();
+      if (headlight && activeCamera) {
+        headlight.position.copy(activeCamera.position);
+      }
+      renderer.render(scene, activeCamera);
+    }
+
+    // --- CARGA Y PROCESAMIENTO DE ARCHIVO STEP ---
+    async function loadStepFromArrayBuffer(buffer, name) {
+      if (!state.wasmReady || !state.occt) {
+        alert('El motor CAD WebAssembly aún se está iniciando. Por favor espera unos segundos.');
+        return;
+      }
+
+      state.fileName = name ? name.replace(/\.[^/.]+$/, '') : 'componente';
+      document.getElementById('fileNameLabel').textContent = name || 'componente.stp';
+      document.getElementById('placeholder3D').style.display = 'none';
+
+      // Parsear con OpenCASCADE
+      const fileBuffer = new Uint8Array(buffer);
+      console.time('ReadStepFile');
+      const result = state.occt.ReadStepFile(fileBuffer, null);
+      console.timeEnd('ReadStepFile');
+
+      if (!result || !result.success || !result.meshes || result.meshes.length === 0) {
+        alert('No se pudo leer la geometría del archivo STEP. Asegúrese de que el archivo contenga sólidos o superficies válidas.');
+        return;
+      }
+
+      // Limpiar contenedor 3D anterior
+      while (modelContainer.children.length > 0) {
+        const obj = modelContainer.children[0];
+        if (obj.geometry) obj.geometry.dispose();
+        if (obj.material) {
+          if (Array.isArray(obj.material)) obj.material.forEach(m => m.dispose());
+          else obj.material.dispose();
+        }
+        modelContainer.remove(obj);
+      }
+
+      state.bRepMeshes = [];
+      const geometries = [];
+
+      // Materiales estilo CAD técnico de alta visibilidad
+      const bodyMaterial = new THREE.MeshStandardMaterial({
+        color: 0x475569, // Gris pizarra técnico con excelente lectura de relieves y sombras
+        roughness: 0.35,
+        metalness: 0.15,
+        side: THREE.DoubleSide
+      });
+      const pinMaterial = new THREE.MeshStandardMaterial({
+        color: 0xfbbf24, // Dorado brillante nítido para pines / pads
+        roughness: 0.20,
+        metalness: 0.85,
+        side: THREE.DoubleSide
+      });
+
+      let totalTriangles = 0;
+
+      result.meshes.forEach((meshData, idx) => {
+        const geom = new THREE.BufferGeometry();
+        geom.setAttribute('position', new THREE.BufferAttribute(new Float32Array(meshData.attributes.position.array), 3));
+        
+        if (meshData.attributes.normal) {
+          geom.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(meshData.attributes.normal.array), 3));
+        } else {
+          geom.computeVertexNormals();
+        }
+
+        if (meshData.index) {
+          geom.setIndex(new THREE.BufferAttribute(new Uint32Array(meshData.index.array), 1));
+        }
+
+        let mat = bodyMaterial;
+        // Asignar color según datos STEP si existen
+        if (meshData.color) {
+          const c = new THREE.Color(meshData.color[0], meshData.color[1], meshData.color[2]);
+          // Si el color importado es excesivamente oscuro (plásticos negros/ferritas),
+          // aumentamos la luminosidad mínima a 0.28 para no empastar los detalles en sombra
+          const hsl = {};
+          c.getHSL(hsl);
+          if (hsl.l < 0.24) {
+            c.setHSL(hsl.h, Math.max(0.08, hsl.s), 0.28);
+          }
+          mat = new THREE.MeshStandardMaterial({
+            color: c,
+            roughness: 0.35,
+            metalness: 0.15,
+            side: THREE.DoubleSide
+          });
+        } else if (idx % 2 === 1) {
+          mat = pinMaterial;
+        }
+
+        const mesh = new THREE.Mesh(geom, mat);
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
+
+        // Añadir aristas de definición 3D para resaltar pliegues, chaflanes y curvas del cuerpo
+        const edgesGeom = new THREE.EdgesGeometry(geom, 22);
+        const edgesMat = new THREE.LineBasicMaterial({
+          color: 0x94a3b8,
+          transparent: true,
+          opacity: 0.35
+        });
+        const edgeLines = new THREE.LineSegments(edgesGeom, edgesMat);
+        mesh.add(edgeLines);
+
+        modelContainer.add(mesh);
+
+        state.bRepMeshes.push(mesh);
+        geometries.push(geom);
+        totalTriangles += (geom.index ? geom.index.count / 3 : geom.attributes.position.count / 3);
+      });
+
+      // Crear geometría combinada para cálculos
+      state.rawGeometry = mergeGeometries(geometries);
+
+      // Centrar inicialmente el modelo en el origen 3D
+      centerModelInitial();
+
+      // Actualizar estadísticas
+      updateModelStats(totalTriangles, result.meshes.length);
+
+      // Auto-detectar radios independientes de las 4 esquinas del modelo 3D
+      const detectedRadii = detectCornerRadiiPerCorner();
+      ['tl', 'tr', 'bl', 'br'].forEach(k => {
+        if (!state.bboxCorners[k]) state.bboxCorners[k] = { type: 'radius', val: 0 };
+        state.bboxCorners[k].val = detectedRadii[k] || 0;
+      });
+      updateBBoxCornerInputsUI();
+
+      // Habilitar botones de descarga
+      const btnDXF = document.getElementById('btnDownloadDXF');
+      const btnSVG = document.getElementById('btnDownloadSVG');
+      if (btnDXF) btnDXF.disabled = false;
+      if (btnSVG) btnSVG.disabled = false;
+
+      // Calcular contorno 2D para Altium y ajustar vista 2D
+      updateOrientationAndContour();
+      setTimeout(resetView2D, 50);
+    }
+
+    // Fusión simple de BufferGeometries
+    function mergeGeometries(geoms) {
+      let totalVertices = 0;
+      let totalIndices = 0;
+      geoms.forEach(g => {
+        totalVertices += g.attributes.position.count;
+        if (g.index) totalIndices += g.index.count;
+      });
+
+      const positions = new Float32Array(totalVertices * 3);
+      const normals = new Float32Array(totalVertices * 3);
+      let posOffset = 0;
+      let vertOffset = 0;
+
+      const indices = totalIndices > 0 ? new Uint32Array(totalIndices) : null;
+      let indOffset = 0;
+
+      geoms.forEach(g => {
+        const p = g.attributes.position.array;
+        positions.set(p, posOffset);
+        if (g.attributes.normal) {
+          normals.set(g.attributes.normal.array, posOffset);
+        }
+        if (indices && g.index) {
+          const idxArr = g.index.array;
+          for (let i = 0; i < idxArr.length; i++) {
+            indices[indOffset + i] = idxArr[i] + vertOffset;
+          }
+          indOffset += idxArr.length;
+        }
+        posOffset += p.length;
+        vertOffset += g.attributes.position.count;
+      });
+
+      const merged = new THREE.BufferGeometry();
+      merged.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      merged.setAttribute('normal', new THREE.BufferAttribute(normals, 3));
+      if (indices) merged.setIndex(new THREE.BufferAttribute(indices, 1));
+      return merged;
+    }
+
+    // Encuadre y configuración inicial del modelo 3D
+    function centerModelInitial() {
+      if (!modelContainer) return;
+
+      // Reseteamos posición y rotación del contenedor
+      state.modelPosition = { x: 0, y: 0, z: 0 };
+      modelContainer.position.set(0, 0, 0);
+      modelContainer.rotation.set(0, 0, 0);
+
+      // Los vértices de cada malla se conservan en sus coordenadas exactas del archivo CAD
+      // Asentamos la base del modelo sobre el plano PCB (Z = 0)
+      snapPcbFloor();
+      modelContainer.updateMatrixWorld(true);
+
+      // Sincronizar inputs de posición en la interfaz
+      const inputX = document.getElementById('modelPosX');
+      const inputY = document.getElementById('modelPosY');
+      if (inputX) inputX.value = "0.00";
+      if (inputY) inputY.value = "0.00";
+
+      // Ajustar cámara para encuadre del modelo apuntando a su centro
+      const box = new THREE.Box3().setFromObject(modelContainer);
+      const center = new THREE.Vector3();
+      box.getCenter(center);
+      const size = new THREE.Vector3();
+      box.getSize(size);
+      const maxDim = Math.max(size.x, size.y, size.z, 5);
+
+      cameraPersp.position.set(center.x + maxDim * 1.8, center.y + maxDim * 2.2, center.z + maxDim * 2.5);
+      controls.target.copy(center);
+      controls.update();
+
+      // Actualizar cámara ortográfica
+      const aspect = cameraOrtho.right / cameraOrtho.top;
+      const f = maxDim * 2.5;
+      cameraOrtho.left = -f * aspect;
+      cameraOrtho.right = f * aspect;
+      cameraOrtho.top = f;
+      cameraOrtho.bottom = -f;
+      cameraOrtho.updateProjectionMatrix();
+    }
+
+    // Desplaza el modelo 3D a coordenadas absolutas X e Y (en mm)
+    function setModelPositionXY(x, y) {
+      if (!modelContainer) return;
+      state.modelPosition.x = x;
+      state.modelPosition.y = y;
+      modelContainer.position.x = x;
+      modelContainer.position.y = y;
+      modelContainer.updateMatrixWorld(true);
+
+      const inputX = document.getElementById('modelPosX');
+      const inputY = document.getElementById('modelPosY');
+      if (inputX) inputX.value = x.toFixed(2);
+      if (inputY) inputY.value = y.toFixed(2);
+
+      updateOrientationAndContour();
+      render2D();
+    }
+
+    // Centra el Bounding Box del modelo en X=0, Y=0
+    function centerModelOnOriginXY() {
+      if (!modelContainer) return;
+      modelContainer.updateMatrixWorld(true);
+      const box = new THREE.Box3().setFromObject(modelContainer);
+      const currentCenterX = (box.min.x + box.max.x) / 2;
+      const currentCenterY = (box.min.y + box.max.y) / 2;
+
+      const newX = state.modelPosition.x - currentCenterX;
+      const newY = state.modelPosition.y - currentCenterY;
+      setModelPositionXY(newX, newY);
+    }
+
+    // Restablece la posición a X=0, Y=0 nativo del archivo CAD
+    function resetModelPositionXY() {
+      setModelPositionXY(0, 0);
+    }
+
+    function updateModelStats(triangles, meshesCount) {
+      document.getElementById('statsTable').style.display = 'table';
+      const box = new THREE.Box3().setFromObject(modelContainer);
+      const size = new THREE.Vector3();
+      box.getSize(size);
+
+      document.getElementById('statDims').textContent = `${size.x.toFixed(2)} × ${size.y.toFixed(2)} × ${size.z.toFixed(2)} mm`;
+      document.getElementById('statTris').textContent = Math.round(triangles).toLocaleString();
+      document.getElementById('statMeshes').textContent = meshesCount;
+    }
+
+    // --- SISTEMA DE ORIENTACIÓN Y TRANSFORMACIONES 3D ---
+    function setPresetView(view) {
+      if (!modelContainer) return;
+
+      // Reseteamos rotación interna del modelo
+      switch(view) {
+        case 'top':
+          state.rotation = { x: 0, y: 0, z: 0 };
+          break;
+        case 'bottom':
+          state.rotation = { x: Math.PI, y: 0, z: 0 };
+          break;
+        case 'front':
+          state.rotation = { x: -Math.PI / 2, y: 0, z: 0 };
+          break;
+        case 'back':
+          state.rotation = { x: Math.PI / 2, y: 0, z: Math.PI };
+          break;
+        case 'left':
+          state.rotation = { x: 0, y: Math.PI / 2, z: 0 };
+          break;
+        case 'right':
+          state.rotation = { x: 0, y: -Math.PI / 2, z: 0 };
+          break;
+      }
+      applyModelRotation();
+    }
+
+    function rotateModelDelta(axis, degrees) {
+      const rad = (degrees * Math.PI) / 180;
+      if (axis === 'x') state.rotation.x += rad;
+      if (axis === 'y') state.rotation.y += rad;
+      if (axis === 'z') state.rotation.z += rad;
+      applyModelRotation();
+    }
+
+    function applyModelRotation() {
+      if (!modelContainer) return;
+      modelContainer.rotation.set(state.rotation.x, state.rotation.y, state.rotation.z);
+      modelContainer.updateMatrixWorld(true);
+
+      // Asentar en Z=0
+      snapPcbFloor();
+      updateOrientationAndContour();
+    }
+
+    function snapPcbFloor() {
+      if (!modelContainer) return;
+      const box = new THREE.Box3().setFromObject(modelContainer);
+      const deltaZ = -box.min.z;
+      modelContainer.position.z += deltaZ;
+      modelContainer.updateMatrixWorld(true);
+    }
+
+    // --- HERRAMIENTA: ALINEAR CARA SELECCIONADA A PCB ---
+    function toggleFacePickMode() {
+      state.facePickMode = !state.facePickMode;
+      const btn = document.getElementById('btnPickFaceAlign');
+      const banner = document.getElementById('facePickBanner');
+
+      if (state.facePickMode) {
+        btn.classList.add('active');
+        banner.style.display = 'flex';
+      } else {
+        btn.classList.remove('active');
+        banner.style.display = 'none';
+      }
+    }
+
+    function onCanvas3DPointerDown(event) {
+      if (!state.facePickMode || !modelContainer) return;
+
+      const rect = renderer.domElement.getBoundingClientRect();
+      mouseRay.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+      mouseRay.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+      raycaster.setFromCamera(mouseRay, activeCamera);
+      const intersects = raycaster.intersectObjects(modelContainer.children, true);
+
+      if (intersects.length > 0) {
+        const hit = intersects[0];
+        if (hit.face && hit.face.normal) {
+          // Normal de la cara en espacio de mundo
+          const worldNormal = hit.face.normal.clone();
+          worldNormal.transformDirection(hit.object.matrixWorld).normalize();
+
+          // Queremos que esta normal mire hacia abajo (hacia el plano PCB: [0, 0, -1])
+          const targetNormal = new THREE.Vector3(0, 0, -1);
+          const q = new THREE.Quaternion().setFromUnitVectors(worldNormal, targetNormal);
+
+          modelContainer.quaternion.premultiply(q);
+          const euler = new THREE.Euler().setFromQuaternion(modelContainer.quaternion);
+          state.rotation = { x: euler.x, y: euler.y, z: euler.z };
+
+          snapPcbFloor();
+          toggleFacePickMode();
+          updateOrientationAndContour();
+        }
+      }
+    }
+
+    // --- EXTRACCIÓN DE CONTORNO 2D Y ARISTAS PARA ALTIUM ---
+    // --- EXTRACCIÓN DE CONTORNO 2D Y ARISTAS PARA ALTIUM ---
+    function updateOrientationAndContour() {
+      if (!modelContainer || modelContainer.children.length === 0) return;
+
+      modelContainer.updateMatrixWorld(true);
+
+      const polylines = [];
+      const lines = [];
+
+      // 1. Extraer Aristas Características 3D
+      modelContainer.children.forEach(mesh => {
+        if (!mesh.isMesh) return;
+        const geom = mesh.geometry;
+        if (!geom) return;
+
+        const edgesGeom = new THREE.EdgesGeometry(geom, state.edgeThresholdDeg);
+        const pos = edgesGeom.attributes.position;
+        const matrix = mesh.matrixWorld;
+
+        const p1 = new THREE.Vector3(), p2 = new THREE.Vector3();
+
+        for (let i = 0; i < pos.count; i += 2) {
+          p1.fromBufferAttribute(pos, i).applyMatrix4(matrix);
+          p2.fromBufferAttribute(pos, i + 1).applyMatrix4(matrix);
+
+          // Proyección en 2D (X, Y)
+          const dx = p1.x - p2.x;
+          const dy = p1.y - p2.y;
+          const len = Math.sqrt(dx * dx + dy * dy);
+
+          // Filtrar segmentos verticales colapsados
+          if (len > 0.05) {
+            lines.push({
+              x1: p1.x,
+              y1: p1.y,
+              x2: p2.x,
+              y2: p2.y
+            });
+          }
+        }
+        edgesGeom.dispose();
+      });
+
+      // Si no hay lista guardada o es una extracción nueva, inicializar lista de referencia
+      if (!state.allExtractedLines || state.allExtractedLines.length === 0) {
+        state.allExtractedLines = lines.map(l => ({ ...l }));
+        state.deletedLinesHistory = [];
+        state.hoveredLineIndex = -1;
+      }
+
+      state.contour2D.lines = lines;
+
+      // 2. Generar polígono de Caja Delimitadora (BBox) ajustado automáticamente a las aristas activas
+      recomputeBBoxFromActiveLines();
+
+      recalculateBounds();
+      updateEdgeActionButtons();
+
+      // Habilitar o deshabilitar botones de descarga según presencia de geometría
+      const hasContent = (state.contour2D.polylines.length > 0 || state.contour2D.lines.length > 0);
+      const btnDXF = document.getElementById('btnDownloadDXF');
+      const btnSVG = document.getElementById('btnDownloadSVG');
+      if (btnDXF) btnDXF.disabled = !hasContent;
+      if (btnSVG) btnSVG.disabled = !hasContent;
+
+      render2D();
+    }
+
+    // Recalcula la caja delimitadora a partir de las aristas 2D activas (se adapta automáticamente al borrar aristas)
+    function recomputeBBoxFromActiveLines() {
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+
+      const lines = state.contour2D.lines;
+      if (lines && lines.length > 0) {
+        lines.forEach(l => {
+          if (l.x1 < minX) minX = l.x1;
+          if (l.x1 > maxX) maxX = l.x1;
+          if (l.x2 < minX) minX = l.x2;
+          if (l.x2 > maxX) maxX = l.x2;
+          if (l.y1 < minY) minY = l.y1;
+          if (l.y1 > maxY) maxY = l.y1;
+          if (l.y2 < minY) minY = l.y2;
+          if (l.y2 > maxY) maxY = l.y2;
+        });
+      } else if (modelContainer) {
+        const box = new THREE.Box3().setFromObject(modelContainer);
+        minX = box.min.x; minY = box.min.y;
+        maxX = box.max.x; maxY = box.max.y;
+      }
+
+      if (!isFinite(minX) || !isFinite(maxX) || !isFinite(minY) || !isFinite(maxY)) {
+        minX = -5; maxX = 5; minY = -5; maxY = 5;
+      }
+
+      const corners = state.bboxCorners || {
+        tl: { type: 'radius', val: 0 },
+        tr: { type: 'radius', val: 0 },
+        bl: { type: 'chamfer', val: 0 },
+        br: { type: 'radius', val: 0 }
+      };
+
+      const bboxPoly = generateRoundedBBoxPoly(minX, minY, maxX, maxY, corners);
+      state.contour2D.polylines = [bboxPoly];
+      state.contour2D.courtyardPoly = getCourtyardPoly(minX, minY, maxX, maxY, corners, state.courtyardOffset || 0.50);
+    }
+
+    // Genera polilínea de contorno Top Courtyard ampliado uniformemente (+0.50 mm por defecto)
+    function getCourtyardPoly(minX, minY, maxX, maxY, corners, offset = 0.50) {
+      const d = Math.max(0, offset);
+      const courtMinX = minX - d;
+      const courtMinY = minY - d;
+      const courtMaxX = maxX + d;
+      const courtMaxY = maxY + d;
+
+      const courtCorners = {};
+      const cornerKeys = ['tl', 'tr', 'bl', 'br'];
+      cornerKeys.forEach(k => {
+        const c = (corners && corners[k]) || { type: 'radius', val: 0 };
+        if (c.val > 0.01) {
+          if (c.type === 'radius') {
+            courtCorners[k] = { type: 'radius', val: c.val + d };
+          } else if (c.type === 'chamfer') {
+            courtCorners[k] = { type: 'chamfer', val: c.val + d * (2 - Math.SQRT2) };
+          } else {
+            courtCorners[k] = { type: c.type, val: c.val + d };
+          }
+        } else {
+          courtCorners[k] = { type: c.type || 'radius', val: 0 };
+        }
+      });
+
+      return generateRoundedBBoxPoly(courtMinX, courtMinY, courtMaxX, courtMaxY, courtCorners);
+    }
+
+    // Genera polilínea de rectángulo con esquinas independientes (Radio o Chaflán)
+    function generateRoundedBBoxPoly(minX, minY, maxX, maxY, corners) {
+      const w = maxX - minX;
+      const h = maxY - minY;
+      const maxCut = Math.min(w / 2, h / 2) - 0.01;
+
+      // Sanitizar esquinas
+      const cBL = corners.bl || { type: 'chamfer', val: 0 };
+      const cBR = corners.br || { type: 'radius', val: 0 };
+      const cTR = corners.tr || { type: 'radius', val: 0 };
+      const cTL = corners.tl || { type: 'radius', val: 0 };
+
+      const sBL = Math.max(0, Math.min(cBL.val || 0, maxCut));
+      const sBR = Math.max(0, Math.min(cBR.val || 0, maxCut));
+      const sTR = Math.max(0, Math.min(cTR.val || 0, maxCut));
+      const sTL = Math.max(0, Math.min(cTL.val || 0, maxCut));
+
+      const pts = [];
+      const segmentsPerArc = 14;
+
+      function addCornerArc(cx, cy, radius, startAngle, endAngle) {
+        for (let i = 0; i <= segmentsPerArc; i++) {
+          const theta = startAngle + (endAngle - startAngle) * (i / segmentsPerArc);
+          pts.push({
+            x: cx + radius * Math.cos(theta),
+            y: cy + radius * Math.sin(theta)
+          });
+        }
+      }
+
+      // 1. ESQUINA INFERIOR-IZQUIERDA (BL / Pin 1)
+      if (sBL > 0.01) {
+        if (cBL.type === 'chamfer') {
+          pts.push({ x: minX, y: minY + sBL });
+          pts.push({ x: minX + sBL, y: minY });
+        } else {
+          addCornerArc(minX + sBL, minY + sBL, sBL, Math.PI, Math.PI * 1.5);
+        }
+      } else {
+        pts.push({ x: minX, y: minY });
+      }
+
+      // 2. BORDE INFERIOR HACIA ESQUINA INFERIOR-DERECHA (BR)
+      if (sBR > 0.01) {
+        if (cBR.type === 'chamfer') {
+          pts.push({ x: maxX - sBR, y: minY });
+          pts.push({ x: maxX, y: minY + sBR });
+        } else {
+          addCornerArc(maxX - sBR, minY + sBR, sBR, Math.PI * 1.5, Math.PI * 2);
+        }
+      } else {
+        pts.push({ x: maxX, y: minY });
+      }
+
+      // 3. BORDE DERECHO HACIA ESQUINA SUPERIOR-DERECHA (TR)
+      if (sTR > 0.01) {
+        if (cTR.type === 'chamfer') {
+          pts.push({ x: maxX, y: maxY - sTR });
+          pts.push({ x: maxX - sTR, y: maxY });
+        } else {
+          addCornerArc(maxX - sTR, maxY - sTR, sTR, 0, Math.PI * 0.5);
+        }
+      } else {
+        pts.push({ x: maxX, y: maxY });
+      }
+
+      // 4. BORDE SUPERIOR HACIA ESQUINA SUPERIOR-IZQUIERDA (TL)
+      if (sTL > 0.01) {
+        if (cTL.type === 'chamfer') {
+          pts.push({ x: minX + sTL, y: maxY });
+          pts.push({ x: minX, y: maxY - sTL });
+        } else {
+          addCornerArc(minX + sTL, maxY - sTL, sTL, Math.PI * 0.5, Math.PI);
+        }
+      } else {
+        pts.push({ x: minX, y: maxY });
+      }
+
+      pts.isClosed = true;
+      return pts;
+    }
+
+    // Detecta analíticamente el radio individual de cada una de las 4 esquinas del 3D
+    function detectCornerRadiiPerCorner() {
+      const defaultRadii = { tl: 0, tr: 0, bl: 0, br: 0 };
+      if (!modelContainer || modelContainer.children.length === 0) return defaultRadii;
+
+      // Asegurar que la matriz mundial de los meshes esté actualizada con la orientación actual
+      modelContainer.updateMatrixWorld(true);
+
+      const box = new THREE.Box3().setFromObject(modelContainer);
+      const minX = box.min.x, minY = box.min.y;
+      const maxX = box.max.x, maxY = box.max.y;
+      const w = maxX - minX, h = maxY - minY;
+      if (w <= 0.1 || h <= 0.1) return defaultRadii;
+
+      const tol = 0.12; // tolerancia de contacto con bordes en mm
+      let minX_top = maxX, maxX_top = minX;
+      let minX_bot = maxX, maxX_bot = minX;
+      let minY_left = maxY, maxY_left = minY;
+      let minY_right = maxY, maxY_right = minY;
+
+      let distBL = Infinity, distBR = Infinity, distTR = Infinity, distTL = Infinity;
+
+      const v = new THREE.Vector3();
+      modelContainer.children.forEach(mesh => {
+        const geom = mesh.geometry;
+        if (!geom) return;
+        const pos = geom.attributes.position;
+        const mat = mesh.matrixWorld;
+
+        for (let i = 0; i < pos.count; i++) {
+          v.fromBufferAttribute(pos, i).applyMatrix4(mat);
+
+          // Contacto tangencial con bordes
+          if (Math.abs(v.y - maxY) < tol) {
+            if (v.x < minX_top) minX_top = v.x;
+            if (v.x > maxX_top) maxX_top = v.x;
+          }
+          if (Math.abs(v.y - minY) < tol) {
+            if (v.x < minX_bot) minX_bot = v.x;
+            if (v.x > maxX_bot) maxX_bot = v.x;
+          }
+          if (Math.abs(v.x - minX) < tol) {
+            if (v.y < minY_left) minY_left = v.y;
+            if (v.y > maxY_left) maxY_left = v.y;
+          }
+          if (Math.abs(v.x - maxX) < tol) {
+            if (v.y < minY_right) minY_right = v.y;
+            if (v.y > maxY_right) maxY_right = v.y;
+          }
+
+          // Distancia a las 4 esquinas teóricas
+          const dBL = Math.hypot(v.x - minX, v.y - minY);
+          if (dBL < distBL) distBL = dBL;
+
+          const dBR = Math.hypot(v.x - maxX, v.y - minY);
+          if (dBR < distBR) distBR = dBR;
+
+          const dTR = Math.hypot(v.x - maxX, v.y - maxY);
+          if (dTR < distTR) distTR = dTR;
+
+          const dTL = Math.hypot(v.x - minX, v.y - maxY);
+          if (dTL < distTL) distTL = dTL;
+        }
+      });
+
+      function calcRadius(distCorner, tangent1, tangent2) {
+        // Si hay vértices en la esquina teórica (a menos de 0.15 mm), es esquina viva (sharp 90°) sin radio
+        if (distCorner <= 0.15) return 0;
+        // Si el contacto tangencial no retrocede o excede los límites admisibles, no hay curvatura
+        if (tangent1 <= 0.10 || tangent2 <= 0.10) return 0;
+        if (tangent1 > w * 0.48 || tangent2 > h * 0.48) return 0;
+
+        const estFromCorner = distCorner * 2.4142;
+        // Validación de consistencia geométrica con los bordes
+        if (tangent1 < estFromCorner * 0.5 || tangent2 < estFromCorner * 0.5) return 0;
+        if (tangent1 > estFromCorner * 2.0 || tangent2 > estFromCorner * 2.0) return 0;
+
+        const maxAllowed = Math.min(w, h) / 2;
+        if (estFromCorner > maxAllowed || estFromCorner < 0.10) return 0;
+        return Math.round(estFromCorner * 20) / 20; // múltiplo de 0.05 mm
+      }
+
+      const tTopL = (minX_top <= maxX_top) ? Math.max(0, minX_top - minX) : 0;
+      const tTopR = (minX_top <= maxX_top) ? Math.max(0, maxX - maxX_top) : 0;
+      const tBotL = (minX_bot <= maxX_bot) ? Math.max(0, minX_bot - minX) : 0;
+      const tBotR = (minX_bot <= maxX_bot) ? Math.max(0, maxX - maxX_bot) : 0;
+
+      const tLeftT = (minY_left <= maxY_left) ? Math.max(0, maxY - maxY_left) : 0;
+      const tLeftB = (minY_left <= maxY_left) ? Math.max(0, minY_left - minY) : 0;
+      const tRightT = (minY_right <= maxY_right) ? Math.max(0, maxY - maxY_right) : 0;
+      const tRightB = (minY_right <= maxY_right) ? Math.max(0, minY_right - minY) : 0;
+
+      return {
+        tl: calcRadius(distTL, tTopL, tLeftT),
+        tr: calcRadius(distTR, tTopR, tRightT),
+        bl: calcRadius(distBL, tBotL, tLeftB),
+        br: calcRadius(distBR, tBotR, tRightB)
+      };
+    }
+
+    // Actualiza los inputs numéricos y los botones Radio / Chaflán de la interfaz
+    function updateBBoxCornerInputsUI() {
+      const corners = state.bboxCorners || {
+        tl: { type: 'radius', val: 0 },
+        tr: { type: 'radius', val: 0 },
+        bl: { type: 'chamfer', val: 0 },
+        br: { type: 'radius', val: 0 }
+      };
+
+      ['tl', 'tr', 'bl', 'br'].forEach(k => {
+        const uppercaseK = k.toUpperCase();
+        const inputEl = document.getElementById(`bboxRadius${uppercaseK}`);
+        const btnRadius = document.getElementById(`btnType${uppercaseK}_radius`);
+        const btnChamfer = document.getElementById(`btnType${uppercaseK}_chamfer`);
+
+        if (inputEl) inputEl.value = (corners[k].val || 0).toFixed(2);
+        if (btnRadius && btnChamfer) {
+          btnRadius.classList.toggle('active', corners[k].type === 'radius');
+          btnChamfer.classList.toggle('active', corners[k].type === 'chamfer');
+        }
+      });
+    }
+    const updateBBoxRadiiInputs = updateBBoxCornerInputsUI; // compatibilidad interna
+
+    // Recalcula los límites dimensionales a partir de los trazos activos
+    function recalculateBounds() {
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+
+      state.contour2D.polylines.forEach(poly => {
+        poly.forEach(pt => {
+          if (pt.x < minX) minX = pt.x;
+          if (pt.x > maxX) maxX = pt.x;
+          if (pt.y < minY) minY = pt.y;
+          if (pt.y > maxY) maxY = pt.y;
+        });
+      });
+
+      state.contour2D.lines.forEach(line => {
+        if (line.x1 < minX) minX = line.x1;
+        if (line.x1 > maxX) maxX = line.x1;
+        if (line.x2 < minX) minX = line.x2;
+        if (line.x2 > maxX) maxX = line.x2;
+
+        if (line.y1 < minY) minY = line.y1;
+        if (line.y1 > maxY) maxY = line.y1;
+        if (line.y2 < minY) minY = line.y2;
+        if (line.y2 > maxY) maxY = line.y2;
+      });
+
+      if (!isFinite(minX)) {
+        minX = -5; maxX = 5; minY = -5; maxY = 5;
+      }
+
+      state.contour2D.bounds = {
+        minX, minY, maxX, maxY,
+        width: Math.max(0, maxX - minX),
+        height: Math.max(0, maxY - minY),
+        centerX: (minX + maxX) / 2,
+        centerY: (minY + maxY) / 2
+      };
+
+      updateOriginOffset();
+    }
+
+    // Actualiza la visibilidad y estado del banner y botones de eliminación
+    function updateEdgeActionButtons() {
+      const banner = document.getElementById('bannerEdgeDelete');
+      const btnUndo = document.getElementById('btnEdgeUndo');
+      const btnRestore = document.getElementById('btnEdgeRestore');
+      if (!banner || !btnUndo || !btnRestore) return;
+
+      // Si está activo el modo de anclaje de origen, el banner de origen tiene prioridad
+      if (state.originPickMode) {
+        banner.style.display = 'none';
+        return;
+      }
+
+      if (state.showEdges && (state.contour2D.lines.length > 0 || state.deletedLinesHistory.length > 0)) {
+        banner.style.display = 'flex';
+      } else {
+        banner.style.display = 'none';
+      }
+
+      const count = state.deletedLinesHistory.length;
+      btnUndo.disabled = count === 0;
+      btnRestore.disabled = count === 0;
+      btnUndo.textContent = count > 0 ? `↶ Deshacer (${count})` : '↶ Deshacer';
+    }
+
+    // Deshacer la eliminación de la última arista
+    function undoDeleteLine() {
+      if (state.deletedLinesHistory.length === 0) return;
+      const restored = state.deletedLinesHistory.pop();
+      state.contour2D.lines.push(restored);
+      recomputeBBoxFromActiveLines();
+      recalculateBounds();
+      updateEdgeActionButtons();
+      render2D();
+    }
+
+    // Restaurar todas las aristas iniciales
+    function restoreAllLines() {
+      if (state.allExtractedLines.length === 0) return;
+      state.contour2D.lines = state.allExtractedLines.map(l => ({ ...l }));
+      state.deletedLinesHistory = [];
+      state.hoveredLineIndex = -1;
+      recomputeBBoxFromActiveLines();
+      recalculateBounds();
+      updateEdgeActionButtons();
+      render2D();
+    }
+
+    // Distancia perpendicular mínima de un punto (px, py) a un segmento (x1, y1) - (x2, y2)
+    function getDistanceToSegment(px, py, x1, y1, x2, y2) {
+      const dx = x2 - x1;
+      const dy = y2 - y1;
+      const l2 = dx * dx + dy * dy;
+      if (l2 === 0) {
+        const ddx = px - x1, ddy = py - y1;
+        return Math.sqrt(ddx * ddx + ddy * ddy);
+      }
+      let t = ((px - x1) * dx + (py - y1) * dy) / l2;
+      t = Math.max(0, Math.min(1, t));
+      const projX = x1 + t * dx;
+      const projY = y1 + t * dy;
+      const ex = px - projX;
+      const ey = py - projY;
+      return Math.sqrt(ex * ex + ey * ey);
+    }
+
+    // Unión booleana 2D de polígonos usando ClipperLib
+    function compute2DUnion(polygonList) {
+      if (typeof ClipperLib === 'undefined') return [];
+      const scale = 10000; // factor de escala para convertir mm flotantes a enteros Clipper
+
+      const clipper = new ClipperLib.Clipper();
+      const clipperPaths = polygonList.map(poly => {
+        return poly.map(pt => ({
+          X: Math.round(pt.x * scale),
+          Y: Math.round(pt.y * scale)
+        }));
+      });
+
+      clipper.AddPaths(clipperPaths, ClipperLib.PolyType.ptSubject, true);
+      const solution = new ClipperLib.Paths();
+      clipper.Execute(
+        ClipperLib.ClipType.ctUnion,
+        solution,
+        ClipperLib.PolyFillType.pftNonZero,
+        ClipperLib.PolyFillType.pftNonZero
+      );
+
+      // Limpiar y reconvertir a mm flotantes
+      let cleaned = solution;
+      if (typeof ClipperLib !== 'undefined' && ClipperLib.Clipper && typeof ClipperLib.Clipper.CleanPolygons === 'function') {
+        try {
+          cleaned = ClipperLib.Clipper.CleanPolygons(solution, 0.005 * scale);
+        } catch (e) {
+          cleaned = solution;
+        }
+      }
+      return cleaned.map(path => {
+        return path.map(pt => ({
+          x: pt.X / scale,
+          y: pt.Y / scale
+        }));
+      });
+    }
+
+    // Algoritmo de simplificación de polilíneas Douglas-Peucker
+    function simplifyPolyline(points, tolerance) {
+      if (!points || points.length <= 2) return points;
+      const sqTolerance = tolerance * tolerance;
+
+      function getSqDist(p1, p2) {
+        const dx = p1.x - p2.x, dy = p1.y - p2.y;
+        return dx * dx + dy * dy;
+      }
+
+      function getSqSegmentDistance(p, p1, p2) {
+        let x = p1.x, y = p1.y, dx = p2.x - x, dy = p2.y - y;
+        if (dx !== 0 || dy !== 0) {
+          const t = ((p.x - x) * dx + (p.y - y) * dy) / (dx * dx + dy * dy);
+          if (t > 1) {
+            x = p2.x; y = p2.y;
+          } else if (t > 0) {
+            x += dx * t; y += dy * t;
+          }
+        }
+        dx = p.x - x; dy = p.y - y;
+        return dx * dx + dy * dy;
+      }
+
+      function simplifyStep(pts, first, last, sqTol, simplified) {
+        let maxSqDist = sqTol;
+        let index = -1;
+        for (let i = first + 1; i < last; i++) {
+          const sqDist = getSqSegmentDistance(pts[i], pts[first], pts[last]);
+          if (sqDist > maxSqDist) {
+            index = i;
+            maxSqDist = sqDist;
+          }
+        }
+        if (index !== -1) {
+          if (index - first > 1) simplifyStep(pts, first, index, sqTol, simplified);
+          simplified.push(pts[index]);
+          if (last - index > 1) simplifyStep(pts, index, last, sqTol, simplified);
+        }
+      }
+
+      const simplified = [points[0]];
+      simplifyStep(points, 0, points.length - 1, sqTolerance, simplified);
+      simplified.push(points[points.length - 1]);
+      return simplified;
+    }
+
+    // Actualización del punto de origen (0,0)
+    function updateOriginOffset() {
+      const b = state.contour2D.bounds;
+      const cardOrigin = document.getElementById('cardOrigin');
+      if (state.contour2D.originType === 'model-3d') {
+        state.contour2D.originOffset = { x: 0, y: 0 };
+        if (cardOrigin) cardOrigin.textContent = 'Origen 3D (0,0)';
+      } else if (state.contour2D.originType === 'center') {
+        state.contour2D.originOffset = { x: b.centerX, y: b.centerY };
+        if (cardOrigin) cardOrigin.textContent = 'Centro BBox';
+      } else if (state.contour2D.originType === 'bottom-left') {
+        state.contour2D.originOffset = { x: b.minX, y: b.minY };
+        if (cardOrigin) cardOrigin.textContent = 'Pin 1 (Inf-Izq)';
+      }
+    }
+
+    // Detección de puntos de anclaje (Snap) en centros y extremos de la caja delimitadora
+    function getBBoxSnapPoints() {
+      const snapPoints = [];
+      const b = state.contour2D.bounds;
+      if (!b || b.width === 0) return snapPoints;
+
+      const minX = b.minX, maxX = b.maxX, minY = b.minY, maxY = b.maxY;
+      const midX = (minX + maxX) / 2;
+      const midY = (minY + maxY) / 2;
+
+      // 0. Origen 3D (0, 0) en la posición actual
+      snapPoints.push({
+        x: 0,
+        y: 0,
+        type: 'origin3d',
+        label: 'Origen 3D (0, 0)'
+      });
+
+      // 1. Centro Geométrico del Bounding Box
+      snapPoints.push({
+        x: midX,
+        y: midY,
+        type: 'center',
+        label: 'Centro BBox'
+      });
+
+      // 2. Centros de los 4 lados principales de la caja
+      snapPoints.push({ x: midX, y: maxY, type: 'midpoint', label: 'Centro Lado Superior' });
+      snapPoints.push({ x: midX, y: minY, type: 'midpoint', label: 'Centro Lado Inferior' });
+      snapPoints.push({ x: minX, y: midY, type: 'midpoint', label: 'Centro Lado Izquierdo' });
+      snapPoints.push({ x: maxX, y: midY, type: 'midpoint', label: 'Centro Lado Derecho' });
+
+      // 3. 4 Esquinas teóricas a 90°
+      snapPoints.push({ x: minX, y: maxY, type: 'corner', label: 'Esquina Sup-Izq (TL)' });
+      snapPoints.push({ x: maxX, y: maxY, type: 'corner', label: 'Esquina Sup-Der (TR)' });
+      snapPoints.push({ x: minX, y: minY, type: 'corner', label: 'Esquina Inf-Izq (Pin 1)' });
+      snapPoints.push({ x: maxX, y: minY, type: 'corner', label: 'Esquina Inf-Der (BR)' });
+
+      // 4. Extremos y centros de aristas del contorno real (polilíneas con radios y chaflanes)
+      const polylines = state.contour2D.polylines || [];
+      polylines.forEach(poly => {
+        if (!poly || poly.length < 2) return;
+        const n = poly.length;
+        for (let i = 0; i < n; i++) {
+          const p1 = poly[i];
+          const p2 = poly[(i + 1) % n];
+
+          // Extremo / vértice
+          snapPoints.push({
+            x: p1.x,
+            y: p1.y,
+            type: 'vertex',
+            label: 'Extremo de Arista'
+          });
+
+          // Centro de arista (punto medio del segmento)
+          const segLen = Math.hypot(p2.x - p1.x, p2.y - p1.y);
+          if (segLen > 0.15) {
+            snapPoints.push({
+              x: (p1.x + p2.x) / 2,
+              y: (p1.y + p2.y) / 2,
+              type: 'midpoint',
+              label: segLen > 1.5 ? 'Centro de Arista' : 'Punto Medio'
+            });
+          }
+        }
+      });
+
+      // 5. Deduplicación de puntos casi idénticos (< 0.05 mm)
+      const unique = [];
+      snapPoints.forEach(pt => {
+        const dup = unique.some(u => Math.hypot(u.x - pt.x, u.y - pt.y) < 0.05);
+        if (!dup) unique.push(pt);
+      });
+
+      return unique;
+    }
+
+    // Busca el punto de anclaje más próximo a las coordenadas del ratón en pantalla
+    function findClosestSnapPoint(mouseX, mouseY, toScreenX, toScreenY, thresholdPx = 18) {
+      const snapPoints = getBBoxSnapPoints();
+      let best = null;
+      let minDist = thresholdPx;
+
+      snapPoints.forEach(pt => {
+        const sx = toScreenX(pt.x);
+        const sy = toScreenY(pt.y);
+        const dist = Math.hypot(mouseX - sx, mouseY - sy);
+        if (dist < minDist) {
+          minDist = dist;
+          best = { ...pt, screenX: sx, screenY: sy, dist };
+        }
+      });
+
+      return best;
+    }
+
+    // --- PREVISUALIZADOR 2D (CANVAS HIGH-DPI) ---
+    let canvas2D, ctx2D;
+    let view2D = {
+      zoom: 1,
+      offsetX: 0,
+      offsetY: 0,
+      isDragging: false,
+      dragStart: { x: 0, y: 0 }
+    };
+
+    let clickStartCoord = { x: 0, y: 0 };
+    let clickStartButton = 0;
+
+    // Busca la arista más cercana a una posición en pantalla (px)
+    function findLineAtScreenPos(screenX, screenY, maxDistancePx = 10.0) {
+      if (!canvas2D || !state.contour2D || !state.contour2D.lines || state.contour2D.lines.length === 0) return -1;
+      const rect = canvas2D.getBoundingClientRect();
+      const mouseX = screenX - rect.left;
+      const mouseY = screenY - rect.top;
+
+      const dpr = window.devicePixelRatio || 1;
+      const width = canvas2D.width / dpr;
+      const height = canvas2D.height / dpr;
+      const cx = width / 2 + view2D.offsetX;
+      const cy = height / 2 + view2D.offsetY;
+      const z = view2D.zoom;
+
+      const toScreenX = (x) => cx + x * z;
+      const toScreenY = (y) => cy - y * z;
+
+      let closestIdx = -1;
+      let minDistance = maxDistancePx;
+
+      const lines = state.contour2D.lines;
+      for (let i = 0; i < lines.length; i++) {
+        const l = lines[i];
+        const sx1 = toScreenX(l.x1);
+        const sy1 = toScreenY(l.y1);
+        const sx2 = toScreenX(l.x2);
+        const sy2 = toScreenY(l.y2);
+
+        const dist = getDistanceToSegment(mouseX, mouseY, sx1, sy1, sx2, sy2);
+        if (dist < minDistance) {
+          minDistance = dist;
+          closestIdx = i;
+        }
+      }
+      return closestIdx;
+    }
+
+    function init2D() {
+      canvas2D = document.getElementById('canvas2D');
+      ctx2D = canvas2D.getContext('2d');
+
+      // Evitar que aparezca el menú contextual del navegador al hacer clic derecho
+      canvas2D.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+      });
+
+      canvas2D.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        const factor = e.deltaY < 0 ? 1.15 : 0.85;
+        view2D.zoom *= factor;
+        render2D();
+      }, { passive: false });
+
+      canvas2D.addEventListener('pointerdown', (e) => {
+        clickStartCoord = { x: e.clientX, y: e.clientY };
+        clickStartButton = e.button;
+
+        if (state.originPickMode) {
+          if (e.button !== 0) return; // Solo clic izquierdo para seleccionar origen
+          // Si hay un punto de anclaje detectado (snap a centro o extremo), acoplar con precisión matemática
+          let mmX, mmY, originLabel;
+
+          if (state.currentSnapPoint) {
+            mmX = state.currentSnapPoint.x;
+            mmY = state.currentSnapPoint.y;
+            originLabel = `${state.currentSnapPoint.label} (${mmX.toFixed(2)}, ${mmY.toFixed(2)})`;
+          } else {
+            const rect = canvas2D.getBoundingClientRect();
+            const clickX = e.clientX - rect.left;
+            const clickY = e.clientY - rect.top;
+
+            const dpr = window.devicePixelRatio || 1;
+            const width = canvas2D.width / dpr;
+            const height = canvas2D.height / dpr;
+            const cx = width / 2 + view2D.offsetX;
+            const cy = height / 2 + view2D.offsetY;
+
+            mmX = (clickX - cx) / view2D.zoom;
+            mmY = -(clickY - cy) / view2D.zoom;
+            originLabel = `Pers. (${mmX.toFixed(2)}, ${mmY.toFixed(2)})`;
+          }
+
+          state.contour2D.originOffset = { x: mmX, y: mmY };
+          state.contour2D.originType = 'custom';
+          document.getElementById('cardOrigin').textContent = originLabel;
+
+          state.originPickMode = false;
+          state.currentSnapPoint = null;
+          const bPick = document.getElementById('btnOriginPick');
+          if (bPick) bPick.classList.remove('active');
+          const b3d = document.getElementById('btnOrigin3D');
+          if (b3d) b3d.classList.remove('active');
+          const bCen = document.getElementById('btnOriginCenter');
+          if (bCen) bCen.classList.remove('active');
+          const bBL = document.getElementById('btnOriginBottomLeft');
+          if (bBL) bBL.classList.remove('active');
+          const origBanner = document.getElementById('originPickBanner');
+          if (origBanner) origBanner.style.display = 'none';
+          canvas2D.style.cursor = 'default';
+          updateEdgeActionButtons();
+          render2D();
+          return;
+        }
+
+        // Solo permitir arrastrar con botón izquierdo (0) o central/rueda (1)
+        if (e.button === 0 || e.button === 1) {
+          view2D.isDragging = true;
+          view2D.dragStart = { x: e.clientX - view2D.offsetX, y: e.clientY - view2D.offsetY };
+        }
+      });
+
+      canvas2D.addEventListener('pointerleave', () => {
+        if (state.originPickMode && state.currentSnapPoint) {
+          state.currentSnapPoint = null;
+          render2D();
+        }
+      });
+
+      window.addEventListener('pointermove', (e) => {
+        if (view2D.isDragging) {
+          view2D.offsetX = e.clientX - view2D.dragStart.x;
+          view2D.offsetY = e.clientY - view2D.dragStart.y;
+          render2D();
+          return;
+        }
+
+        // Modo de Selección de Origen con anclaje magnético a centros y extremos de caja
+        if (state.originPickMode) {
+          const rect = canvas2D.getBoundingClientRect();
+          if (e.clientX >= rect.left && e.clientX <= rect.right && e.clientY >= rect.top && e.clientY <= rect.bottom) {
+            const mouseX = e.clientX - rect.left;
+            const mouseY = e.clientY - rect.top;
+
+            const dpr = window.devicePixelRatio || 1;
+            const width = canvas2D.width / dpr;
+            const height = canvas2D.height / dpr;
+            const cx = width / 2 + view2D.offsetX;
+            const cy = height / 2 + view2D.offsetY;
+            const z = view2D.zoom;
+
+            const toScreenX = (x) => cx + x * z;
+            const toScreenY = (y) => cy - y * z;
+
+            const snap = findClosestSnapPoint(mouseX, mouseY, toScreenX, toScreenY, 20);
+            state.currentSnapPoint = snap;
+            canvas2D.style.cursor = 'crosshair';
+            render2D();
+          } else if (state.currentSnapPoint) {
+            state.currentSnapPoint = null;
+            render2D();
+          }
+          return;
+        }
+
+        // Detección de aristas bajo el cursor para eliminar (izq) o conmutar Serigrafía (der)
+        if ((state.extractMode === 'edges' || state.showEdges) && !state.originPickMode && state.contour2D.lines.length > 0) {
+          const closestIdx = findLineAtScreenPos(e.clientX, e.clientY, 10.0);
+
+          if (state.hoveredLineIndex !== closestIdx) {
+            state.hoveredLineIndex = closestIdx;
+            canvas2D.style.cursor = closestIdx >= 0 ? 'pointer' : 'default';
+            render2D();
+          }
+        } else if (state.hoveredLineIndex !== -1) {
+          state.hoveredLineIndex = -1;
+          canvas2D.style.cursor = 'default';
+          render2D();
+        }
+      });
+
+      window.addEventListener('pointerup', (e) => {
+        const wasDragging = view2D.isDragging;
+        view2D.isDragging = false;
+
+        // Comprobar si fue un clic (sin desplazamiento significativo)
+        const moveDist = Math.hypot(e.clientX - clickStartCoord.x, e.clientY - clickStartCoord.y);
+        if (moveDist < 6) {
+          const lineIdx = state.hoveredLineIndex >= 0 ? state.hoveredLineIndex : findLineAtScreenPos(e.clientX, e.clientY, 10.0);
+          if ((state.extractMode === 'edges' || state.showEdges) && lineIdx >= 0 && lineIdx < state.contour2D.lines.length) {
+            if (e.button === 0) {
+              // Clic izquierdo: Borrar arista
+              const removed = state.contour2D.lines.splice(lineIdx, 1)[0];
+              state.deletedLinesHistory.push(removed);
+              state.hoveredLineIndex = -1;
+              canvas2D.style.cursor = 'default';
+              recomputeBBoxFromActiveLines();
+              recalculateBounds();
+              updateEdgeActionButtons();
+              render2D();
+            } else if (e.button === 2) {
+              // Clic derecho: Conmutar añadir / quitar de TOP_OVERLAY (Serigrafía)
+              const line = state.contour2D.lines[lineIdx];
+              line.inOverlay = !line.inOverlay;
+              updateEdgeActionButtons();
+              render2D();
+            }
+          }
+        }
+      });
+    }
+
+    function resetView2D() {
+      const container = document.getElementById('container2D');
+      const b = state.contour2D.bounds;
+      if (!b || b.width === 0) return;
+
+      const padding = 75;
+      const availW = container.clientWidth - padding * 2;
+      const availH = container.clientHeight - padding * 2;
+
+      const scaleX = availW / b.width;
+      const scaleY = availH / b.height;
+      view2D.zoom = Math.min(scaleX, scaleY, 50); // px por mm
+      view2D.offsetX = -b.centerX * view2D.zoom;
+      view2D.offsetY = b.centerY * view2D.zoom;
+      render2D();
+    }
+
+    function render2D() {
+      if (!canvas2D || !ctx2D) return;
+      const container = document.getElementById('container2D');
+      const dpr = window.devicePixelRatio || 1;
+
+      const width = container.clientWidth;
+      const height = container.clientHeight;
+
+      canvas2D.width = width * dpr;
+      canvas2D.height = height * dpr;
+      ctx2D.scale(dpr, dpr);
+
+      // Fondo estilo PCB Altium oscuro
+      ctx2D.fillStyle = '#0b161b';
+      ctx2D.fillRect(0, 0, width, height);
+
+      const b = state.contour2D.bounds;
+      if (!b || (state.contour2D.polylines.length === 0 && state.contour2D.lines.length === 0)) {
+        document.getElementById('placeholder2D').style.display = 'flex';
+        document.getElementById('infoCard2D').style.display = 'none';
+        return;
+      }
+
+      document.getElementById('placeholder2D').style.display = 'none';
+      document.getElementById('infoCard2D').style.display = 'block';
+
+      // Actualizar tarjeta de información
+      document.getElementById('cardDims').textContent = `${b.width.toFixed(2)} × ${b.height.toFixed(2)} mm`;
+      const courtEl = document.getElementById('cardCourtyardDims');
+      if (courtEl) {
+        const d = state.courtyardOffset || 0.50;
+        courtEl.textContent = `${(b.width + 2 * d).toFixed(2)} × ${(b.height + 2 * d).toFixed(2)} mm`;
+      }
+      const linesEl = document.getElementById('cardLines');
+      if (linesEl) linesEl.textContent = state.contour2D.lines.length;
+      const overlayEl = document.getElementById('cardOverlayLines');
+      if (overlayEl) {
+        const countOverlay = state.contour2D.lines.filter(l => l.inOverlay).length;
+        overlayEl.textContent = countOverlay;
+      }
+      const delEl = document.getElementById('cardDeletedLines');
+      if (delEl) delEl.textContent = state.deletedLinesHistory.length;
+
+      const cx = width / 2 + view2D.offsetX;
+      const cy = height / 2 + view2D.offsetY;
+      const z = view2D.zoom;
+
+      // Transformación a coordenadas de pantalla (Y invertido porque en CAD Y+ es hacia arriba)
+      const toScreenX = (x) => cx + x * z;
+      const toScreenY = (y) => cy - y * z;
+
+      // Dibujar Rejilla milimétrica tenue
+      ctx2D.lineWidth = 1;
+      ctx2D.strokeStyle = 'rgba(255, 255, 255, 0.05)';
+      const stepMm = z > 15 ? 1 : 5; // Rejilla de 1mm o 5mm
+      const startMmX = Math.floor((-width / 2 - view2D.offsetX) / (z * stepMm)) * stepMm;
+      const endMmX = Math.ceil((width / 2 - view2D.offsetX) / (z * stepMm)) * stepMm;
+      const startMmY = Math.floor((-height / 2 + view2D.offsetY) / (z * stepMm)) * stepMm;
+      const endMmY = Math.ceil((height / 2 + view2D.offsetY) / (z * stepMm)) * stepMm;
+
+      for (let x = startMmX; x <= endMmX; x += stepMm) {
+        const sx = toScreenX(x);
+        ctx2D.beginPath();
+        ctx2D.moveTo(sx, 0);
+        ctx2D.lineTo(sx, height);
+        ctx2D.stroke();
+      }
+      for (let y = startMmY; y <= endMmY; y += stepMm) {
+        const sy = toScreenY(y);
+        ctx2D.beginPath();
+        ctx2D.moveTo(0, sy);
+        ctx2D.lineTo(width, sy);
+        ctx2D.stroke();
+      }
+
+      // Dibujar líneas de aristas características
+      if (state.showEdges) {
+        // 1. Aristas características normales (Cian claro)
+        ctx2D.lineWidth = 1.3;
+        ctx2D.strokeStyle = '#38bdf8';
+        ctx2D.beginPath();
+        state.contour2D.lines.forEach((line, idx) => {
+          if (idx === state.hoveredLineIndex || line.inOverlay) return;
+          ctx2D.moveTo(toScreenX(line.x1), toScreenY(line.y1));
+          ctx2D.lineTo(toScreenX(line.x2), toScreenY(line.y2));
+        });
+        ctx2D.stroke();
+
+        // 2. Aristas añadidas por el usuario a Serigrafía (Top Overlay - Oro / Amarillo #facc15)
+        ctx2D.lineWidth = 2.4;
+        ctx2D.strokeStyle = '#facc15';
+        ctx2D.beginPath();
+        state.contour2D.lines.forEach((line, idx) => {
+          if (idx === state.hoveredLineIndex || !line.inOverlay) return;
+          ctx2D.moveTo(toScreenX(line.x1), toScreenY(line.y1));
+          ctx2D.lineTo(toScreenX(line.x2), toScreenY(line.y2));
+        });
+        ctx2D.stroke();
+
+        // 3. Si hay una arista resaltada bajo el cursor
+        if (state.hoveredLineIndex >= 0 && state.hoveredLineIndex < state.contour2D.lines.length) {
+          const hLine = state.contour2D.lines[state.hoveredLineIndex];
+          const hx1 = toScreenX(hLine.x1);
+          const hy1 = toScreenY(hLine.y1);
+          const hx2 = toScreenX(hLine.x2);
+          const hy2 = toScreenY(hLine.y2);
+
+          const isOverlay = !!hLine.inOverlay;
+
+          // Halo translúcido
+          ctx2D.lineWidth = 9;
+          ctx2D.strokeStyle = isOverlay ? 'rgba(250, 204, 21, 0.45)' : 'rgba(56, 189, 248, 0.45)';
+          ctx2D.beginPath();
+          ctx2D.moveTo(hx1, hy1);
+          ctx2D.lineTo(hx2, hy2);
+          ctx2D.stroke();
+
+          // Línea sólida destacada
+          ctx2D.lineWidth = 2.8;
+          ctx2D.strokeStyle = isOverlay ? '#facc15' : '#38bdf8';
+          ctx2D.beginPath();
+          ctx2D.moveTo(hx1, hy1);
+          ctx2D.lineTo(hx2, hy2);
+          ctx2D.stroke();
+
+          // Indicador interactivo en el centro de la arista
+          const midX = (hx1 + hx2) / 2;
+          const midY = (hy1 + hy2) / 2;
+
+          ctx2D.fillStyle = isOverlay ? '#facc15' : '#0284c7';
+          ctx2D.beginPath();
+          ctx2D.arc(midX, midY, 9, 0, Math.PI * 2);
+          ctx2D.fill();
+
+          ctx2D.strokeStyle = '#ffffff';
+          ctx2D.lineWidth = 1.6;
+          if (isOverlay) {
+            ctx2D.stroke();
+            ctx2D.fillStyle = '#0f172a';
+            ctx2D.font = 'bold 10px sans-serif';
+            ctx2D.textAlign = 'center';
+            ctx2D.textBaseline = 'middle';
+            ctx2D.fillText('✓', midX, midY);
+          } else {
+            ctx2D.beginPath();
+            ctx2D.moveTo(midX - 3.5, midY); ctx2D.lineTo(midX + 3.5, midY);
+            ctx2D.moveTo(midX, midY - 3.5); ctx2D.lineTo(midX, midY + 3.5);
+            ctx2D.stroke();
+          }
+
+          // Etiqueta flotante explicativa
+          ctx2D.save();
+          ctx2D.font = 'bold 10px "JetBrains Mono", monospace';
+          const tagText = isOverlay 
+            ? 'Serigrafía [Der: Quitar | Izq: Borrar]' 
+            : '+ Serigrafía [Der: Añadir | Izq: Borrar]';
+          const textW = ctx2D.measureText(tagText).width;
+          const tagW = textW + 14;
+          const tagH = 18;
+          const tagX = Math.min(Math.max(midX - tagW / 2, 8), width - tagW - 8);
+          const tagY = midY - 24 < 8 ? midY + 14 : midY - 24;
+
+          ctx2D.fillStyle = '#0b161b';
+          ctx2D.fillRect(tagX, tagY, tagW, tagH);
+          ctx2D.strokeStyle = isOverlay ? '#facc15' : '#38bdf8';
+          ctx2D.lineWidth = 1.2;
+          ctx2D.strokeRect(tagX, tagY, tagW, tagH);
+
+          ctx2D.fillStyle = isOverlay ? '#facc15' : '#f8fafc';
+          ctx2D.textAlign = 'center';
+          ctx2D.textBaseline = 'middle';
+          ctx2D.fillText(tagText, tagX + tagW / 2, tagY + tagH / 2);
+          ctx2D.restore();
+        }
+      }
+
+      // Dibujar polilínea de Top Courtyard (Púrpura / Magenta #c084fc con trazo discontinuo)
+      if (state.showCourtyard && state.contour2D.courtyardPoly) {
+        ctx2D.save();
+        ctx2D.lineWidth = 1.8;
+        ctx2D.strokeStyle = '#c084fc';
+        ctx2D.fillStyle = 'rgba(192, 132, 252, 0.05)';
+        ctx2D.setLineDash([5, 4]);
+
+        const cPoly = state.contour2D.courtyardPoly;
+        if (cPoly.length >= 2) {
+          ctx2D.beginPath();
+          ctx2D.moveTo(toScreenX(cPoly[0].x), toScreenY(cPoly[0].y));
+          for (let i = 1; i < cPoly.length; i++) {
+            ctx2D.lineTo(toScreenX(cPoly[i].x), toScreenY(cPoly[i].y));
+          }
+          if (cPoly.isClosed) ctx2D.closePath();
+          ctx2D.fill();
+          ctx2D.stroke();
+        }
+        ctx2D.restore();
+      }
+
+      // Dibujar polilíneas de silueta (Amarillo serigrafía Top Overlay Altium)
+      if (state.showBBox) {
+        ctx2D.lineWidth = 2.4;
+        ctx2D.strokeStyle = '#facc15';
+        ctx2D.fillStyle = 'rgba(250, 204, 21, 0.07)';
+
+        state.contour2D.polylines.forEach(poly => {
+          if (poly.length < 2) return;
+          ctx2D.beginPath();
+          ctx2D.moveTo(toScreenX(poly[0].x), toScreenY(poly[0].y));
+          for (let i = 1; i < poly.length; i++) {
+            ctx2D.lineTo(toScreenX(poly[i].x), toScreenY(poly[i].y));
+          }
+          if (poly.isClosed) ctx2D.closePath();
+          ctx2D.fill();
+          ctx2D.stroke();
+        });
+      }
+
+      // Dibujar Cotas Dimensionales con separación generosa (evita solapes con el modelo y el texto)
+      const dimOffset = 38; // 38px de distancia del modelo
+      drawHorizontalDimension(toScreenX(b.minX), toScreenX(b.maxX), toScreenY(b.minY), dimOffset, `${b.width.toFixed(2)} mm`);
+      drawVerticalDimension(toScreenY(b.minY), toScreenY(b.maxY), toScreenX(b.maxX), dimOffset, `${b.height.toFixed(2)} mm`);
+
+      // Dibujar Origen del Footprint (0, 0)
+      const orig = state.contour2D.originOffset;
+      const ox = toScreenX(orig.x);
+      const oy = toScreenY(orig.y);
+
+      // Cruz y círculos de origen CAD
+      ctx2D.lineWidth = 1.5;
+      ctx2D.strokeStyle = '#f43f5e';
+      ctx2D.fillStyle = 'rgba(244, 63, 94, 0.2)';
+
+      ctx2D.beginPath();
+      ctx2D.arc(ox, oy, 7, 0, Math.PI * 2);
+      ctx2D.stroke();
+      ctx2D.fill();
+
+      ctx2D.beginPath();
+      ctx2D.moveTo(ox - 14, oy); ctx2D.lineTo(ox + 14, oy);
+      ctx2D.moveTo(ox, oy - 14); ctx2D.lineTo(ox, oy + 14);
+      ctx2D.stroke();
+
+      ctx2D.font = '10px JetBrains Mono, monospace';
+      ctx2D.fillStyle = '#f43f5e';
+      ctx2D.fillText('(0, 0)', ox + 10, oy - 10);
+
+      // Dibujar marcadores de anclaje magnético (Snap) a centros y extremos de caja delimitadora
+      if (state.originPickMode) {
+        const snapPoints = getBBoxSnapPoints();
+
+        // 1. Dibujar puntos de anclaje candidatos discretos
+        snapPoints.forEach(pt => {
+          const sx = toScreenX(pt.x);
+          const sy = toScreenY(pt.y);
+
+          // Si es el punto activo capturado por el cursor, se dibuja destacado después
+          if (state.currentSnapPoint && Math.hypot(pt.x - state.currentSnapPoint.x, pt.y - state.currentSnapPoint.y) < 0.05) {
+            return;
+          }
+
+          if (pt.type === 'midpoint') {
+            // Diamante sutil para centros de arista
+            ctx2D.strokeStyle = 'rgba(245, 158, 11, 0.65)';
+            ctx2D.fillStyle = 'rgba(245, 158, 11, 0.2)';
+            ctx2D.lineWidth = 1.3;
+            ctx2D.beginPath();
+            ctx2D.moveTo(sx, sy - 4);
+            ctx2D.lineTo(sx + 4, sy);
+            ctx2D.lineTo(sx, sy + 4);
+            ctx2D.lineTo(sx - 4, sy);
+            ctx2D.closePath();
+            ctx2D.fill();
+            ctx2D.stroke();
+          } else if (pt.type === 'corner' || pt.type === 'vertex') {
+            // Cuadradito sutil para extremos / vértices
+            ctx2D.strokeStyle = 'rgba(56, 189, 248, 0.65)';
+            ctx2D.fillStyle = 'rgba(56, 189, 248, 0.2)';
+            ctx2D.lineWidth = 1.3;
+            ctx2D.strokeRect(sx - 3.5, sy - 3.5, 7, 7);
+            ctx2D.fillRect(sx - 3.5, sy - 3.5, 7, 7);
+          } else if (pt.type === 'center') {
+            // Cruz para centro de caja
+            ctx2D.strokeStyle = 'rgba(244, 63, 94, 0.65)';
+            ctx2D.lineWidth = 1.5;
+            ctx2D.beginPath();
+            ctx2D.moveTo(sx - 5, sy); ctx2D.lineTo(sx + 5, sy);
+            ctx2D.moveTo(sx, sy - 5); ctx2D.lineTo(sx, sy + 5);
+            ctx2D.stroke();
+          }
+        });
+
+        // 2. Dibujar el punto de anclaje activo (capturado magnéticamente por el cursor)
+        if (state.currentSnapPoint) {
+          const sp = state.currentSnapPoint;
+          const sx = sp.screenX;
+          const sy = sp.screenY;
+
+          // Líneas de guía proyectadas (cruz tenue en cruz)
+          ctx2D.save();
+          ctx2D.setLineDash([4, 4]);
+          ctx2D.strokeStyle = 'rgba(16, 185, 129, 0.5)';
+          ctx2D.lineWidth = 1.2;
+          ctx2D.beginPath();
+          ctx2D.moveTo(sx - 35, sy); ctx2D.lineTo(sx + 35, sy);
+          ctx2D.moveTo(sx, sy - 35); ctx2D.lineTo(sx, sy + 35);
+          ctx2D.stroke();
+          ctx2D.restore();
+
+          // Anillo magnético exterior brillante
+          ctx2D.lineWidth = 2.5;
+          ctx2D.strokeStyle = '#10b981';
+          ctx2D.fillStyle = 'rgba(16, 185, 129, 0.28)';
+
+          ctx2D.beginPath();
+          ctx2D.arc(sx, sy, 9, 0, Math.PI * 2);
+          ctx2D.fill();
+          ctx2D.stroke();
+
+          // Punto central sólido
+          ctx2D.fillStyle = '#ffffff';
+          ctx2D.beginPath();
+          ctx2D.arc(sx, sy, 2.5, 0, Math.PI * 2);
+          ctx2D.fill();
+
+          // Cartela flotante (Tooltip CAD)
+          const tagTitle = `🧲 ${sp.label}`;
+          const tagCoords = `(${sp.x >= 0 ? '+' : ''}${sp.x.toFixed(2)}, ${sp.y >= 0 ? '+' : ''}${sp.y.toFixed(2)}) mm`;
+
+          ctx2D.font = 'bold 10.5px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+          const titleWidth = ctx2D.measureText(tagTitle).width;
+          ctx2D.font = '9.5px "JetBrains Mono", monospace';
+          const coordsWidth = ctx2D.measureText(tagCoords).width;
+          const boxW = Math.max(titleWidth, coordsWidth) + 18;
+          const boxH = 34;
+
+          let boxX = sx + 14;
+          let boxY = sy - 38;
+          if (boxX + boxW > width - 10) boxX = sx - boxW - 14;
+          if (boxY < 10) boxY = sy + 14;
+
+          // Fondo cartela
+          ctx2D.fillStyle = 'rgba(15, 23, 42, 0.95)';
+          ctx2D.strokeStyle = '#10b981';
+          ctx2D.lineWidth = 1.3;
+          ctx2D.beginPath();
+          if (ctx2D.roundRect) {
+            ctx2D.roundRect(boxX, boxY, boxW, boxH, 6);
+          } else {
+            ctx2D.rect(boxX, boxY, boxW, boxH);
+          }
+          ctx2D.fill();
+          ctx2D.stroke();
+
+          // Texto título
+          ctx2D.font = 'bold 10.5px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+          ctx2D.fillStyle = '#34d399';
+          ctx2D.textAlign = 'left';
+          ctx2D.textBaseline = 'top';
+          ctx2D.fillText(tagTitle, boxX + 9, boxY + 5);
+
+          // Texto coordenadas mm
+          ctx2D.font = '9.5px "JetBrains Mono", monospace';
+          ctx2D.fillStyle = '#cbd5e1';
+          ctx2D.fillText(tagCoords, boxX + 9, boxY + 19);
+        }
+      }
+    }
+
+    // Dibuja cota horizontal inferior con líneas auxiliares y cartela protectora
+    function drawHorizontalDimension(x1, x2, objY, offsetPx, text) {
+      const dimY = objY + offsetPx;
+      const extStart = objY + 4;
+      const extEnd = dimY + 6;
+
+      ctx2D.lineWidth = 1;
+      ctx2D.strokeStyle = 'rgba(148, 163, 184, 0.55)';
+
+      // Líneas auxiliares de cota
+      ctx2D.beginPath();
+      ctx2D.moveTo(x1, extStart); ctx2D.lineTo(x1, extEnd);
+      ctx2D.moveTo(x2, extStart); ctx2D.lineTo(x2, extEnd);
+      ctx2D.stroke();
+
+      // Línea principal de cota
+      ctx2D.beginPath();
+      ctx2D.moveTo(x1, dimY); ctx2D.lineTo(x2, dimY);
+      ctx2D.stroke();
+
+      // Flechas en los extremos
+      const arr = 4.5;
+      ctx2D.beginPath();
+      ctx2D.moveTo(x1 + arr, dimY - 2.5); ctx2D.lineTo(x1, dimY); ctx2D.lineTo(x1 + arr, dimY + 2.5);
+      ctx2D.moveTo(x2 - arr, dimY - 2.5); ctx2D.lineTo(x2, dimY); ctx2D.lineTo(x2 - arr, dimY + 2.5);
+      ctx2D.stroke();
+
+      // Fondo protector de texto (pill) para que nunca se entrecorte el número
+      ctx2D.font = 'bold 10px "JetBrains Mono", monospace';
+      const textWidth = ctx2D.measureText(text).width;
+      const midX = (x1 + x2) / 2;
+      const pillW = textWidth + 12;
+      const pillH = 16;
+      const pillX = midX - pillW / 2;
+      const pillY = dimY - pillH / 2;
+
+      ctx2D.fillStyle = '#0b161b';
+      ctx2D.fillRect(pillX, pillY, pillW, pillH);
+      ctx2D.strokeStyle = 'rgba(148, 163, 184, 0.4)';
+      ctx2D.strokeRect(pillX, pillY, pillW, pillH);
+
+      ctx2D.fillStyle = '#f8fafc';
+      ctx2D.textAlign = 'center';
+      ctx2D.textBaseline = 'middle';
+      ctx2D.fillText(text, midX, dimY);
+    }
+
+    // Dibuja cota vertical derecha con líneas auxiliares y texto rotado con cartela protectora
+    function drawVerticalDimension(y1, y2, objX, offsetPx, text) {
+      const dimX = objX + offsetPx;
+      const extStart = objX + 4;
+      const extEnd = dimX + 6;
+
+      ctx2D.lineWidth = 1;
+      ctx2D.strokeStyle = 'rgba(148, 163, 184, 0.55)';
+
+      // Líneas auxiliares de cota
+      ctx2D.beginPath();
+      ctx2D.moveTo(extStart, y1); ctx2D.lineTo(extEnd, y1);
+      ctx2D.moveTo(extStart, y2); ctx2D.lineTo(extEnd, y2);
+      ctx2D.stroke();
+
+      // Línea principal de cota
+      ctx2D.beginPath();
+      ctx2D.moveTo(dimX, y1); ctx2D.lineTo(dimX, y2);
+      ctx2D.stroke();
+
+      // Flechas en los extremos
+      const arr = 4.5;
+      ctx2D.beginPath();
+      ctx2D.moveTo(dimX - 2.5, y1 - arr); ctx2D.lineTo(dimX, y1); ctx2D.lineTo(dimX + 2.5, y1 - arr);
+      ctx2D.moveTo(dimX - 2.5, y2 + arr); ctx2D.lineTo(dimX, y2); ctx2D.lineTo(dimX + 2.5, y2 + arr);
+      ctx2D.stroke();
+
+      // Fondo protector de texto rotado
+      ctx2D.font = 'bold 10px "JetBrains Mono", monospace';
+      const textWidth = ctx2D.measureText(text).width;
+      const midY = (y1 + y2) / 2;
+      const pillW = textWidth + 12;
+      const pillH = 16;
+
+      ctx2D.save();
+      ctx2D.translate(dimX, midY);
+      ctx2D.rotate(-Math.PI / 2);
+
+      ctx2D.fillStyle = '#0b161b';
+      ctx2D.fillRect(-pillW / 2, -pillH / 2, pillW, pillH);
+      ctx2D.strokeStyle = 'rgba(148, 163, 184, 0.4)';
+      ctx2D.strokeRect(-pillW / 2, -pillH / 2, pillW, pillH);
+
+      ctx2D.fillStyle = '#f8fafc';
+      ctx2D.textAlign = 'center';
+      ctx2D.textBaseline = 'middle';
+      ctx2D.fillText(text, 0, 0);
+      ctx2D.restore();
+    }
+
+    // --- GENERADOR DXF AUTOCAD R12 ASCII PARA ALTIUM DESIGNER ---
+    function generateAltiumDXF() {
+      const polylines = state.contour2D.polylines;
+      const courtyardPoly = state.contour2D.courtyardPoly;
+      const orig = state.contour2D.originOffset;
+      const layerOverlay = (state.layerName || 'TOP_OVERLAY').toUpperCase().trim();
+      const layerCourtyard = (state.courtyardLayerName || 'TOP_COURTYARD').toUpperCase().trim();
+
+      const out = [];
+
+      // SECCIÓN HEADER: Formato AutoCAD R12 (AC1009) y unidades métricas
+      out.push("0\nSECTION\n2\nHEADER\n9\n$ACADVER\n1\nAC1009\n9\n$INSUNITS\n70\n4\n0\nENDSEC");
+
+      // SECCIÓN TABLES: Definición de capas (TOP_OVERLAY y TOP_COURTYARD)
+      out.push("0\nSECTION\n2\nTABLES\n0\nTABLE\n2\nLAYER\n70\n2");
+      out.push(`0\nLAYER\n2\n${layerOverlay}\n70\n0\n62\n7\n6\nCONTINUOUS`);
+      out.push(`0\nLAYER\n2\n${layerCourtyard}\n70\n0\n62\n6\n6\nCONTINUOUS`);
+      out.push("0\nENDTAB\n0\nENDSEC");
+
+      // SECCIÓN ENTITIES: Polilíneas cerradas de Caja Delimitadora y Top Courtyard
+      out.push("0\nSECTION\n2\nENTITIES");
+
+      // 1. Capa Serigrafía (Caja Delimitadora)
+      if (polylines && polylines.length > 0) {
+        polylines.forEach(poly => {
+          if (!poly || poly.length < 2) return;
+          const isClosed = poly.isClosed !== false;
+
+          out.push(`0\nPOLYLINE\n8\n${layerOverlay}\n66\n1\n70\n${isClosed ? 1 : 0}`);
+
+          poly.forEach(pt => {
+            const x = (pt.x - orig.x).toFixed(4);
+            const y = (pt.y - orig.y).toFixed(4);
+            out.push(`0\nVERTEX\n8\n${layerOverlay}\n10\n${x}\n20\n${y}\n30\n0.0`);
+          });
+
+          out.push("0\nSEQEND");
+        });
+      }
+
+      // 1b. Aristas de detalle añadidas por el usuario a Serigrafía (TOP_OVERLAY)
+      if (state.contour2D.lines && state.contour2D.lines.length > 0) {
+        state.contour2D.lines.forEach(l => {
+          if (!l.inOverlay) return;
+          const x1 = (l.x1 - orig.x).toFixed(4);
+          const y1 = (l.y1 - orig.y).toFixed(4);
+          const x2 = (l.x2 - orig.x).toFixed(4);
+          const y2 = (l.y2 - orig.y).toFixed(4);
+
+          out.push(`0\nLINE\n8\n${layerOverlay}\n10\n${x1}\n20\n${y1}\n30\n0.0\n11\n${x2}\n21\n${y2}\n31\n0.0`);
+        });
+      }
+
+      // 2. Capa Top Courtyard (Copia expandida +0.50 mm)
+      if (courtyardPoly && courtyardPoly.length >= 2) {
+        const isClosed = courtyardPoly.isClosed !== false;
+
+        out.push(`0\nPOLYLINE\n8\n${layerCourtyard}\n66\n1\n70\n${isClosed ? 1 : 0}`);
+
+        courtyardPoly.forEach(pt => {
+          const x = (pt.x - orig.x).toFixed(4);
+          const y = (pt.y - orig.y).toFixed(4);
+          out.push(`0\nVERTEX\n8\n${layerCourtyard}\n10\n${x}\n20\n${y}\n30\n0.0`);
+        });
+
+        out.push("0\nSEQEND");
+      }
+
+      out.push("0\nENDSEC\n0\nEOF\n");
+
+      return out.join("\n");
+    }
+
+    // Descarga de archivo DXF
+    function downloadDXF() {
+      const dxfContent = generateAltiumDXF();
+      const blob = new Blob([dxfContent], { type: 'application/dxf' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${state.fileName}_footprint_layers.dxf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+
+    // Exportación SVG
+    function downloadSVG() {
+      const b = state.contour2D.bounds;
+      const orig = state.contour2D.originOffset;
+      const polylines = state.contour2D.polylines;
+      const courtyardPoly = state.contour2D.courtyardPoly;
+
+      const offsetD = Math.max(0, state.courtyardOffset || 0.50);
+      const padding = 1.2 + offsetD;
+      const w = b.width + padding * 2;
+      const h = b.height + padding * 2;
+      const minX = b.minX - orig.x - padding;
+      const minY = b.minY - orig.y - padding;
+
+      let svg = `<?xml version="1.0" encoding="UTF-8"?>\n`;
+      svg += `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${minX} ${minY} ${w} ${h}" width="${w}mm" height="${h}mm">\n`;
+      svg += `  <style>\n`;
+      svg += `    .outline { fill: none; stroke: #facc15; stroke-width: 0.15; stroke-linejoin: round; }\n`;
+      svg += `    .courtyard { fill: none; stroke: #c084fc; stroke-width: 0.15; stroke-dasharray: 0.5, 0.4; stroke-linejoin: round; }\n`;
+      svg += `  </style>\n`;
+
+      if (polylines) {
+        polylines.forEach(p => {
+          const d = p.map((pt, i) => `${i === 0 ? 'M' : 'L'} ${(pt.x - orig.x).toFixed(3)} ${-(pt.y - orig.y).toFixed(3)}`).join(' ') + (p.isClosed ? ' Z' : '');
+          svg += `  <path class="outline" d="${d}" />\n`;
+        });
+      }
+
+      if (state.contour2D.lines && state.contour2D.lines.length > 0) {
+        state.contour2D.lines.forEach(l => {
+          if (!l.inOverlay) return;
+          const x1 = (l.x1 - orig.x).toFixed(3);
+          const y1 = (-(l.y1 - orig.y)).toFixed(3);
+          const x2 = (l.x2 - orig.x).toFixed(3);
+          const y2 = (-(l.y2 - orig.y)).toFixed(3);
+          svg += `  <line class="outline" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" />\n`;
+        });
+      }
+
+      if (courtyardPoly && courtyardPoly.length >= 2) {
+        const dCourt = courtyardPoly.map((pt, i) => `${i === 0 ? 'M' : 'L'} ${(pt.x - orig.x).toFixed(3)} ${-(pt.y - orig.y).toFixed(3)}`).join(' ') + (courtyardPoly.isClosed ? ' Z' : '');
+        svg += `  <path class="courtyard" d="${dCourt}" />\n`;
+      }
+
+      svg += `</svg>`;
+
+      const blob = new Blob([svg], { type: 'image/svg+xml' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${state.fileName}_outline.svg`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+
+    // --- MANEJO DE EVENTOS DE USUARIO ---
+    function setupEventListeners() {
+      // 1. Carga de archivo
+      const dropZone = document.getElementById('dropZone');
+      const fileInput = document.getElementById('fileInput');
+
+      dropZone.addEventListener('click', () => fileInput.click());
+      fileInput.addEventListener('change', (e) => {
+        if (e.target.files && e.target.files[0]) {
+          const file = e.target.files[0];
+          file.arrayBuffer().then(buf => loadStepFromArrayBuffer(buf, file.name));
+        }
+      });
+
+      dropZone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        dropZone.classList.add('dragover');
+      });
+
+      dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+
+      dropZone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dropZone.classList.remove('dragover');
+        if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+          const file = e.dataTransfer.files[0];
+          file.arrayBuffer().then(buf => loadStepFromArrayBuffer(buf, file.name));
+        }
+      });
+
+      // Botón muestra local
+      document.getElementById('btnLoadLocalSample').addEventListener('click', async () => {
+        try {
+          const res = await fetch('./7447773470.stp');
+          if (!res.ok) throw new Error('Archivo local no accesible por fetch directo');
+          const buf = await res.arrayBuffer();
+          loadStepFromArrayBuffer(buf, '7447773470.stp');
+        } catch (err) {
+          alert('Para cargar directamente el archivo local 7447773470.stp, puedes arrastrarlo desde el explorador de archivos a la zona de carga.');
+        }
+      });
+
+      // 2. Vistas predefinidas
+      document.getElementById('btnViewTop').addEventListener('click', () => setPresetView('top'));
+      document.getElementById('btnViewBottom').addEventListener('click', () => setPresetView('bottom'));
+      document.getElementById('btnViewFront').addEventListener('click', () => setPresetView('front'));
+      document.getElementById('btnViewBack').addEventListener('click', () => setPresetView('back'));
+      document.getElementById('btnViewLeft').addEventListener('click', () => setPresetView('left'));
+      document.getElementById('btnViewRight').addEventListener('click', () => setPresetView('right'));
+
+      // Rotaciones rápidas
+      document.getElementById('btnRotXPos').addEventListener('click', () => rotateModelDelta('x', 90));
+      document.getElementById('btnRotXNeg').addEventListener('click', () => rotateModelDelta('x', -90));
+      document.getElementById('btnRotYPos').addEventListener('click', () => rotateModelDelta('y', 90));
+      document.getElementById('btnRotYNeg').addEventListener('click', () => rotateModelDelta('y', -90));
+      document.getElementById('btnRotZPos').addEventListener('click', () => rotateModelDelta('z', 90));
+      document.getElementById('btnRotZNeg').addEventListener('click', () => rotateModelDelta('z', -90));
+
+      // Asentamiento y Posición en PCB
+      document.getElementById('btnSnapPcbFloor').addEventListener('click', () => {
+        snapPcbFloor();
+        updateOrientationAndContour();
+      });
+
+      document.getElementById('btnPickFaceAlign').addEventListener('click', toggleFacePickMode);
+
+      // Posición X e Y del Modelo 3D
+      const inputModelX = document.getElementById('modelPosX');
+      const inputModelY = document.getElementById('modelPosY');
+      if (inputModelX) {
+        inputModelX.addEventListener('input', (e) => {
+          const val = parseFloat(e.target.value);
+          if (!isNaN(val)) setModelPositionXY(val, state.modelPosition.y);
+        });
+      }
+      if (inputModelY) {
+        inputModelY.addEventListener('input', (e) => {
+          const val = parseFloat(e.target.value);
+          if (!isNaN(val)) setModelPositionXY(state.modelPosition.x, val);
+        });
+      }
+
+      const btnCenterXY = document.getElementById('btnCenterModelXY');
+      if (btnCenterXY) btnCenterXY.addEventListener('click', centerModelOnOriginXY);
+
+      const btnResetXY = document.getElementById('btnResetModelXY');
+      if (btnResetXY) btnResetXY.addEventListener('click', resetModelPositionXY);
+
+      // 3. Control de visibilidad de capas en visor 2D (BOX, LIN, CRT)
+      const btnToggleBBox = document.getElementById('btnToggleLayerBBox');
+      const btnToggleEdges = document.getElementById('btnToggleLayerEdges');
+      const btnToggleCourtyard = document.getElementById('btnToggleLayerCourtyard');
+
+      if (btnToggleBBox) {
+        btnToggleBBox.addEventListener('click', () => {
+          state.showBBox = !state.showBBox;
+          btnToggleBBox.classList.toggle('active', state.showBBox);
+          render2D();
+        });
+      }
+
+      if (btnToggleEdges) {
+        btnToggleEdges.addEventListener('click', () => {
+          state.showEdges = !state.showEdges;
+          btnToggleEdges.classList.toggle('active', state.showEdges);
+          render2D();
+        });
+      }
+
+      if (btnToggleCourtyard) {
+        btnToggleCourtyard.addEventListener('click', () => {
+          state.showCourtyard = !state.showCourtyard;
+          btnToggleCourtyard.classList.toggle('active', state.showCourtyard);
+          render2D();
+        });
+      }
+
+      // Checkbox para vincular las 4 esquinas
+      const bboxLinkRadiiCb = document.getElementById('bboxLinkRadii');
+      if (bboxLinkRadiiCb) {
+        bboxLinkRadiiCb.addEventListener('change', (e) => {
+          state.bboxLinkRadii = e.target.checked;
+          if (state.bboxLinkRadii) {
+            const refCorner = state.bboxCorners.tl;
+            ['tr', 'bl', 'br'].forEach(ck => {
+              state.bboxCorners[ck].type = refCorner.type;
+              state.bboxCorners[ck].val = refCorner.val;
+            });
+            updateBBoxCornerInputsUI();
+            updateOrientationAndContour();
+          }
+        });
+      }
+
+      // Selector de tipo (Radio / Chaflán) e input numérico de cada una de las 4 esquinas independientes
+      ['tl', 'tr', 'bl', 'br'].forEach(k => {
+        const uppercaseK = k.toUpperCase();
+        const btnRadius = document.getElementById(`btnType${uppercaseK}_radius`);
+        const btnChamfer = document.getElementById(`btnType${uppercaseK}_chamfer`);
+        const inputEl = document.getElementById(`bboxRadius${uppercaseK}`);
+
+        if (btnRadius) {
+          btnRadius.addEventListener('click', () => {
+            if (state.bboxLinkRadii) {
+              ['tl', 'tr', 'bl', 'br'].forEach(ck => {
+                state.bboxCorners[ck].type = 'radius';
+              });
+            } else {
+              state.bboxCorners[k].type = 'radius';
+            }
+            updateBBoxCornerInputsUI();
+            updateOrientationAndContour();
+          });
+        }
+
+        if (btnChamfer) {
+          btnChamfer.addEventListener('click', () => {
+            if (state.bboxLinkRadii) {
+              ['tl', 'tr', 'bl', 'br'].forEach(ck => {
+                state.bboxCorners[ck].type = 'chamfer';
+              });
+            } else {
+              state.bboxCorners[k].type = 'chamfer';
+            }
+            updateBBoxCornerInputsUI();
+            updateOrientationAndContour();
+          });
+        }
+
+        if (inputEl) {
+          inputEl.addEventListener('input', (e) => {
+            const val = Math.max(0, parseFloat(e.target.value) || 0);
+            if (state.bboxLinkRadii) {
+              ['tl', 'tr', 'bl', 'br'].forEach(ck => {
+                state.bboxCorners[ck].val = val;
+              });
+              updateBBoxCornerInputsUI();
+            } else {
+              state.bboxCorners[k].val = val;
+            }
+            updateOrientationAndContour();
+          });
+        }
+      });
+
+      // Detección analítica de esquinas del 3D
+      const btnAutoDetect = document.getElementById('btnAutoDetectRadius');
+      if (btnAutoDetect) {
+        btnAutoDetect.addEventListener('click', () => {
+          const detectedRadii = detectCornerRadiiPerCorner();
+          ['tl', 'tr', 'bl', 'br'].forEach(k => {
+            state.bboxCorners[k].type = 'radius';
+            state.bboxCorners[k].val = detectedRadii[k] || 0;
+          });
+          updateBBoxCornerInputsUI();
+          updateOrientationAndContour();
+        });
+      }
+
+      // Restablecer esquinas a 90° (0 mm)
+      const btnResetCorners = document.getElementById('btnResetCorners');
+      if (btnResetCorners) {
+        btnResetCorners.addEventListener('click', () => {
+          ['tl', 'tr', 'bl', 'br'].forEach(k => {
+            state.bboxCorners[k].val = 0;
+          });
+          updateBBoxCornerInputsUI();
+          updateOrientationAndContour();
+        });
+      }
+
+      // Inicializar visibilidad de controles de esquinas
+      updateBBoxCornerInputsUI();
+
+      // Botones de eliminación y restauración de aristas
+      document.getElementById('btnEdgeUndo').addEventListener('click', undoDeleteLine);
+      document.getElementById('btnEdgeRestore').addEventListener('click', restoreAllLines);
+
+      // Atajo de teclado Ctrl+Z para deshacer eliminación
+      window.addEventListener('keydown', (e) => {
+        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+          if (state.deletedLinesHistory.length > 0) {
+            e.preventDefault();
+            undoDeleteLine();
+          }
+        }
+      });
+
+      // Sliders
+      const edgeSlider = document.getElementById('edgeThresholdSlider');
+      const edgeVal = document.getElementById('edgeThresholdVal');
+      edgeSlider.addEventListener('input', (e) => {
+        state.edgeThresholdDeg = parseFloat(e.target.value);
+        edgeVal.textContent = `${state.edgeThresholdDeg}°`;
+        updateOrientationAndContour();
+      });
+
+      const tolSlider = document.getElementById('toleranceSlider');
+      const tolVal = document.getElementById('toleranceVal');
+      tolSlider.addEventListener('input', (e) => {
+        state.simplificationTolerance = parseFloat(e.target.value);
+        tolVal.textContent = `${state.simplificationTolerance} mm`;
+        updateOrientationAndContour();
+      });
+
+      // Origen Footprint
+      const btnOrigin3D = document.getElementById('btnOrigin3D');
+      const btnOriginCenter = document.getElementById('btnOriginCenter');
+      const btnOriginBL = document.getElementById('btnOriginBottomLeft');
+      const btnOriginPick = document.getElementById('btnOriginPick');
+      const originBanner = document.getElementById('originPickBanner');
+
+      if (btnOrigin3D) {
+        btnOrigin3D.addEventListener('click', () => {
+          state.contour2D.originType = 'model-3d';
+          btnOrigin3D.classList.add('active');
+          if (btnOriginCenter) btnOriginCenter.classList.remove('active');
+          if (btnOriginBL) btnOriginBL.classList.remove('active');
+          if (btnOriginPick) btnOriginPick.classList.remove('active');
+          state.originPickMode = false;
+          state.currentSnapPoint = null;
+          if (originBanner) originBanner.style.display = 'none';
+          updateOriginOffset();
+          updateEdgeActionButtons();
+          render2D();
+        });
+      }
+
+      if (btnOriginCenter) {
+        btnOriginCenter.addEventListener('click', () => {
+          state.contour2D.originType = 'center';
+          btnOriginCenter.classList.add('active');
+          if (btnOrigin3D) btnOrigin3D.classList.remove('active');
+          if (btnOriginBL) btnOriginBL.classList.remove('active');
+          if (btnOriginPick) btnOriginPick.classList.remove('active');
+          state.originPickMode = false;
+          state.currentSnapPoint = null;
+          if (originBanner) originBanner.style.display = 'none';
+          updateOriginOffset();
+          updateEdgeActionButtons();
+          render2D();
+        });
+      }
+
+      if (btnOriginBL) {
+        btnOriginBL.addEventListener('click', () => {
+          state.contour2D.originType = 'bottom-left';
+          btnOriginBL.classList.add('active');
+          if (btnOrigin3D) btnOrigin3D.classList.remove('active');
+          if (btnOriginCenter) btnOriginCenter.classList.remove('active');
+          if (btnOriginPick) btnOriginPick.classList.remove('active');
+          state.originPickMode = false;
+          state.currentSnapPoint = null;
+          if (originBanner) originBanner.style.display = 'none';
+          updateOriginOffset();
+          updateEdgeActionButtons();
+          render2D();
+        });
+      }
+
+      if (btnOriginPick) {
+        btnOriginPick.addEventListener('click', () => {
+          state.originPickMode = !state.originPickMode;
+          state.currentSnapPoint = null;
+          if (state.originPickMode) {
+            btnOriginPick.classList.add('active');
+            if (btnOrigin3D) btnOrigin3D.classList.remove('active');
+            if (btnOriginCenter) btnOriginCenter.classList.remove('active');
+            if (btnOriginBL) btnOriginBL.classList.remove('active');
+            if (originBanner) originBanner.style.display = 'flex';
+            updateEdgeActionButtons();
+          } else {
+            btnOriginPick.classList.remove('active');
+            if (originBanner) originBanner.style.display = 'none';
+            updateEdgeActionButtons();
+          }
+          render2D();
+        });
+      }
+
+      const btnCancelOrigin = document.getElementById('btnCancelOriginPick');
+      if (btnCancelOrigin) {
+        btnCancelOrigin.addEventListener('click', () => {
+          state.originPickMode = false;
+          state.currentSnapPoint = null;
+          btnOriginPick.classList.remove('active');
+          if (originBanner) originBanner.style.display = 'none';
+          updateEdgeActionButtons();
+          render2D();
+        });
+      }
+
+      // Nombres de capas y holgura de Courtyard
+      const inputLayerName = document.getElementById('dxfLayerName');
+      if (inputLayerName) {
+        inputLayerName.addEventListener('input', (e) => {
+          state.layerName = e.target.value;
+        });
+      }
+
+      const inputCourtyardLayerName = document.getElementById('dxfCourtyardLayerName');
+      if (inputCourtyardLayerName) {
+        inputCourtyardLayerName.addEventListener('input', (e) => {
+          state.courtyardLayerName = e.target.value;
+        });
+      }
+
+      const inputCourtyardOffset = document.getElementById('courtyardOffsetInput');
+      if (inputCourtyardOffset) {
+        inputCourtyardOffset.addEventListener('input', (e) => {
+          const val = parseFloat(e.target.value);
+          state.courtyardOffset = isNaN(val) ? 0.50 : Math.max(0, val);
+          recomputeBBoxFromActiveLines();
+          render2D();
+        });
+      }
+
+      // Botones de descarga
+      document.getElementById('btnDownloadDXF').addEventListener('click', downloadDXF);
+      document.getElementById('btnDownloadSVG').addEventListener('click', downloadSVG);
+
+      // Herramientas Visor 3D
+      const btnBright = document.getElementById('btnToggleBrightLights');
+      if (btnBright) {
+        btnBright.addEventListener('click', (e) => {
+          state.brightLights = !state.brightLights;
+          e.currentTarget.classList.toggle('active', state.brightLights);
+          applyLightingPreset();
+        });
+      }
+
+      document.getElementById('btnToggleWireframe').addEventListener('click', (e) => {
+        state.wireframe = !state.wireframe;
+        e.currentTarget.classList.toggle('active', state.wireframe);
+        if (modelContainer) {
+          modelContainer.traverse(child => {
+            if (child.isMesh && child.material) child.material.wireframe = state.wireframe;
+          });
+        }
+      });
+
+      document.getElementById('btnToggleCameraMode').addEventListener('click', (e) => {
+        state.cameraOrtho = !state.cameraOrtho;
+        e.currentTarget.classList.toggle('active', state.cameraOrtho);
+        activeCamera = state.cameraOrtho ? cameraOrtho : cameraPersp;
+        controls.object = activeCamera;
+        controls.update();
+      });
+
+      document.getElementById('btnResetCamera3D').addEventListener('click', () => {
+        if (modelContainer) centerModelInitial();
+      });
+
+      // Herramientas Visor 2D
+      document.getElementById('btnZoomIn2D').addEventListener('click', () => {
+        view2D.zoom *= 1.25;
+        render2D();
+      });
+      document.getElementById('btnZoomOut2D').addEventListener('click', () => {
+        view2D.zoom *= 0.8;
+        render2D();
+      });
+      document.getElementById('btnResetView2D').addEventListener('click', resetView2D);
+
+      // Modal Guía Altium
+      const modal = document.getElementById('altiumModal');
+      const btnOpenGuide = document.getElementById('btnOpenGuide');
+      if (btnOpenGuide && modal) {
+        btnOpenGuide.addEventListener('click', () => modal.style.display = 'flex');
+      }
+      const btnCloseModal = document.getElementById('btnCloseModal');
+      if (btnCloseModal && modal) {
+        btnCloseModal.addEventListener('click', () => modal.style.display = 'none');
+      }
+      if (modal) {
+        modal.addEventListener('click', (e) => {
+          if (e.target === modal) modal.style.display = 'none';
+        });
+      }
+    }
+
+    // --- ARRANQUE DE LA APLICACIÓN ---
+    window.addEventListener('DOMContentLoaded', () => {
+      init3D();
+      init2D();
+      setupEventListeners();
+      initOCCT();
+    });
+  </script>
+</body>
+</html>
